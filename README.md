@@ -13,7 +13,7 @@
 - **自动合并 PDF**：每个章节自动合并为 PDF 文件
 - **邮件推送**：可选将生成的 PDF 通过邮件发送（支持 QQ/163 等邮箱）
 - **可配置性**：自定义下载目录、并发数、账号密码等设置
-- **完全开源**：MIT 许可证，自由使用、修改和分发
+- **开源共享**：CC BY-NC-ND 4.0 许可证，允许非商用分享
 
 ## 🚀 快速开始
 
@@ -27,7 +27,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/YourName/jm2pdf.git
+git clone https://github.com/WisadelZ/jm2pdf.git
 cd jm2pdf
 
 # 安装依赖
@@ -115,17 +115,11 @@ mail:
 - **核心库**: jmcomic（禁漫客户端）、Pillow（图像处理）
 - **打包工具**: PyInstaller（单文件 exe）
 
-##  贡献
+## 🙏 反馈与建议
 
-欢迎提交 Issue 和 Pull Request！
+欢迎提交 Issue 报告问题或提出建议！
 
-### 开发建议
-
-1. Fork 本仓库
-2. 创建 feature 分支
-3. 提交更改
-4. 推送到分支
-5. 创建 Pull Request
+由于本项目采用 CC BY-NC-ND 4.0 许可证（禁止衍生作品），因此不接受 Fork 修改后的 Pull Request。如有功能需求或 Bug，请直接通过 Issue 反馈。
 
 ## 📄 许可证
 
