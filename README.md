@@ -19,7 +19,7 @@
 
 ### 方式一：使用预编译版本（推荐）
 
-1. 访问 [Releases](https://github.com/YourName/jm2pdf/releases) 页面
+1. 访问 [Releases](https://github.com/WisadelZ/jm2pdf/releases) 页面
 2. 下载最新的 `Jm2PDF.exe`
 3. 双击运行，输入本子 ID 即可开始使用
 
@@ -30,11 +30,11 @@
 git clone https://github.com/WisadelZ/jm2pdf.git
 cd jm2pdf
 
-# 安装依赖
-& "e:\Trae work projects\exp1\python\python.exe" -m pip install -r requirements.txt
+# 安装依赖（使用项目内置的 portable Python）
+& "python" -m pip install -r requirements.txt
 
 # 打包成 exe
-& "e:\Trae work projects\exp1\python\python.exe" build.py
+& "python" build.py
 ```
 
 ## 📖 使用说明
