@@ -145,9 +145,9 @@ limitations under the License.
 
 ## 🙏 致谢
 
-- [jmcomic](https://github.com/zhanyong-wan/jmcomic) - 禁漫客户端库
+- jmcomic 禁漫客户端库
 - Python 社区及所有开源贡献者
 
 ---
 
-**注意**：本工具仅用于学习研究，请遵守禁漫网站的使用条款，尊重版权和创作者权益。
+**注意**：本工具仅用于学习研究，请遵守网站的使用条款，尊重版权和创作者权益。
