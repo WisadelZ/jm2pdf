@@ -2,7 +2,7 @@
 
 一个开源免费的禁漫（jmcomic）本子下载、搜索和 PDF 合并工具，支持批量操作和邮件推送。
 
-[![License](https://img.shields.io/badge/License-CC%20BY-NC-ND%204.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-CC%20BY-NC-ND%204.0-blue.svg)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
 [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
 [![Windows](https://img.shields.io/badge/Windows-10%2B-green.svg)](https://www.microsoft.com/windows)
 
