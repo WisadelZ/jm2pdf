@@ -20,7 +20,7 @@
 ### 方式一：使用预编译版本（推荐）
 
 1. 访问 [Releases](https://github.com/YourName/jm2pdf/releases) 页面
-2. 下载最新的 `Jm2PDF-v*.exe`
+2. 下载最新的 `Jm2PDF.exe`
 3. 双击运行，输入本子 ID 即可开始使用
 
 ### 方式二：从源码构建
@@ -41,7 +41,7 @@ cd jm2pdf
 
 ### 基本流程
 
-1. **输入本子 ID**：在"本子ID"框中输入禁漫编号（如：`627201`）
+1. **输入本子 ID**：在"本子ID"框中输入本子编号（如：`1462837`）
 2. **选择下载目录**：指定保存位置（默认 `./download`）
 3. **配置选项**（可选展开）：
    - 合并为 PDF：勾选后每个章节会生成 PDF
@@ -81,7 +81,7 @@ jm2pdf/
 ├── build.py            # PyInstaller 打包脚本
 ├── conf.yml            # 配置模板
 ├── icon.ico            # 应用图标
-├── LICENSE             # MIT 许可证
+├── LICENSE             # 许可证
 ├── README.md           # 项目说明
 └── .gitignore          # Git 忽略规则
 ```
