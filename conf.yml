@@ -1,0 +1,34 @@
+# jm2pdf 配置文件
+# 界面中的任何修改都会自动同步保存到本文件；也可手动编辑后重启程序生效。
+# 相对路径基于程序（exe）所在目录解析。
+
+version: 1.2.0
+app:
+  download_dir: ./download
+  to_pdf: true
+  thread_image: 30
+  thread_photo: 16
+  username: ''
+  password: ''
+mail:
+  enable: false
+  server: smtp.qq.com
+  port: 465
+  sender: test@example.com
+  password: ''
+  receiver: ''
+  subject: downloaded comic
+  body: jmcomic download successfully.
+option:
+  log: true
+  download:
+    image:
+      suffix: .jpg
+  dir_rule:
+    base_dir: ./download
+  plugins:
+    after_photo:
+    - plugin: img2pdf
+      kwargs:
+        pdf_dir: ./download
+        filename_rule: Pid
