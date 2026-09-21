@@ -1,48 +1,41 @@
 # -*- coding: utf-8 -*-
 """
-Jm2PDF v1.2.0 - 禁漫本子下载工具
+Jm2PDF v2.0.0 - 禁漫本子下载工具（Flet UI）
 
 Copyright (c) 2026 WisadelZ
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the CC BY-NC-ND 4.0 License.
-You should have received a copy of the CC BY-NC-ND 4.0 License along
-with this program. If not, see <https://creativecommons.org/licenses/by-nc-nd/4.0/>
+This work is licensed under the CC BY-NC-ND 4.0 International License.
+You may obtain a copy of the License at
 
-Unauthorized modification, distribution, or commercial use is strictly prohibited.
+    https://creativecommons.org/licenses/by-nc-nd/4.0/
+
+Unauthorized modification, distribution of modified versions,
+or commercial use is strictly prohibited.
 """
 
 import copy
 import logging
 import os
-import queue
 import re
 import smtplib
 import sys
 import threading
 import traceback
 
+# 以无控制台方式打包时 sys.stdout / sys.stderr 可能为 None，先做兜底
 if sys.stdout is None:
     sys.stdout = open(os.devnull, "w", encoding="utf-8")
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
-import tkinter as tk
-from tkinter import filedialog, font as tkfont, messagebox, scrolledtext, ttk
-
 import yaml
+import flet as ft
 import jmcomic
 
-# 应用标识
-_APP_NAME = "Jm2PDF"
-_APP_VER = "1.2.0"
-_CONF_FILE = "conf.yml"
-
-APP_NAME = _APP_NAME.lower()
-APP_VERSION = _APP_VER
+APP_NAME = "jm2pdf"
+APP_VERSION = "2.0.0"
 APP_TITLE = "%s v%s - 本子下载转 PDF" % (APP_NAME, APP_VERSION)
-CONF_FILENAME = _CONF_FILE
-BTN_WIDTH = 8
+CONF_FILENAME = "conf.yml"
 
 CONF_HEADER = """# Jm2PDF 配置文件
 # 界面中的任何修改都会自动同步保存到本文件；也可手动编辑后重启程序生效。
@@ -51,7 +44,7 @@ CONF_HEADER = """# Jm2PDF 配置文件
 """
 
 DEFAULT_CONF_TEXT = """
-version: 1.2.0
+version: 2.0.0
 app:
   download_dir: ./download
   to_pdf: true
@@ -84,6 +77,9 @@ option:
 """
 
 
+# --------------------------------------------------------------------------
+# 路径与配置工具
+# --------------------------------------------------------------------------
 def app_dir():
     if getattr(sys, "frozen", False):
         return os.path.dirname(os.path.abspath(sys.executable))
@@ -177,6 +173,9 @@ def save_conf(conf):
         f.write(text)
 
 
+# --------------------------------------------------------------------------
+# jmcomic 选项构建 / 下载结果 / 邮件
+# --------------------------------------------------------------------------
 def build_option(conf):
     app_conf = conf.get("app") or {}
     download_dir = resolve_path(app_conf.get("download_dir"))
@@ -261,543 +260,393 @@ def send_mail(cfg, files, log):
         server.sendmail(sender, receiver, msg.as_string())
 
 
-class QueueLogHandler(logging.Handler):
-    def __init__(self, q):
+# --------------------------------------------------------------------------
+# 日志桥接
+# --------------------------------------------------------------------------
+class _UiLogHandler(logging.Handler):
+    def __init__(self, sink):
         super().__init__()
-        self.q = q
+        self._sink = sink
 
     def emit(self, record):
         try:
-            self.q.put(("log", self.format(record)))
+            self._sink(self.format(record))
         except Exception:
             pass
-
-
-# --------------------------------------------------------------------------
-# 折叠面板控件
-# --------------------------------------------------------------------------
-class CollapsibleFrame(ttk.Frame):
-    """可折叠面板：勾选复选框展开，取消勾选折叠并禁用内部控件。"""
-
-    def __init__(self, parent, text, variable, **kw):
-        super().__init__(parent, **kw)
-        self._variable = variable
-        self._expanded = tk.BooleanVar(value=variable.get())
-        self._expanded.trace_add("write", lambda *_: self._on_toggle())
-
-        # 标题行
-        header = ttk.Frame(self)
-        header.pack(fill="x")
-        self._check = ttk.Checkbutton(header, text=text, variable=self._expanded)
-        self._check.pack(side="left", padx=8, pady=6)
-
-        # 内容容器
-        self._body = ttk.Frame(self)
-        self._body.pack(fill="both", expand=True, padx=4, pady=(0, 4))
-        self._on_toggle()
-
-    def body(self):
-        return self._body
-
-    def _on_toggle(self):
-        expanded = self._expanded.get()
-        # 同步到外部 variable（供 conf 读取）
-        self._variable.set(expanded)
-        # 折叠时禁用内部所有控件
-        for child in self._body.winfo_children():
-            child.configure(state=("normal" if expanded else "disabled"))
-        if expanded:
-            self._body.pack(fill="both", expand=True, padx=4, pady=(0, 4))
-        else:
-            self._body.pack_forget()
 
 
 # --------------------------------------------------------------------------
 # 主界面
 # --------------------------------------------------------------------------
-class App:
-    SAVE_DELAY_MS = 500
+class Jm2PdfUI:
+    SAVE_DELAY = 0.5
+    COLOR_OK = "#27ae60"
+    COLOR_ERR = "#c0392b"
+    COLOR_IDLE = "#666666"
 
-    def __init__(self, root):
-        self.root = root
-        self.q = queue.Queue()
+    def __init__(self, page: ft.Page):
+        self.page = page
+        self.conf = load_conf()
         self.running = False
         self.searching = False
         self.searched_id = ""
-        self._save_job = None
-        self._loading = True
+        self._save_timer = None
 
-        self.conf = load_conf()
-
-        root.title(APP_TITLE)
-        root.geometry("640x720")
-        root.minsize(480, 500)
+        page.title = APP_TITLE
+        page.window.width = 660
+        page.window.height = 700
+        page.window.min_width = 540
+        page.window.min_height = 520
+        page.window.resizable = True
+        page.padding = 12
+        page.theme_mode = ft.ThemeMode.LIGHT
 
         app_conf = self.conf["app"]
         mail_conf = self.conf["mail"]
 
-        self.ids_var = tk.StringVar()
-        self.search_var = tk.StringVar()
-        self.result_var = tk.StringVar()
+        # ---- 下载任务 ----
+        self.ids_field = ft.TextField(
+            label="本子 ID", hint_text="多个 ID 用逗号或空格分隔", expand=True)
+        self.btn_clear_ids = ft.Button("清空", on_click=self._on_clear_ids)
 
-        self.download_dir = tk.StringVar(value=str(app_conf.get("download_dir") or "./download"))
-        self.to_pdf = tk.BooleanVar(value=bool(app_conf.get("to_pdf", True)))
-        self.thread_image = tk.IntVar(value=clamp(app_conf.get("thread_image", 30), 1, 50))
-        self.thread_photo = tk.IntVar(value=clamp(app_conf.get("thread_photo", 16), 1, 64))
-        self.username = tk.StringVar(value=app_conf.get("username") or "")
-        self.password = tk.StringVar(value=app_conf.get("password") or "")
+        self.dir_field = ft.TextField(
+            label="下载目录", expand=True,
+            value=str(app_conf.get("download_dir") or "./download"),
+            on_change=self._on_conf_change)
+        self.btn_browse = ft.Button("浏览", on_click=self._on_browse)
 
-        self.mail_enable = tk.BooleanVar(value=bool(mail_conf.get("enable", False)))
-        self.mail_server = tk.StringVar(value=mail_conf.get("server") or "smtp.qq.com")
-        self.mail_port = tk.StringVar(value=str(mail_conf.get("port", 465)))
-        self.mail_sender = tk.StringVar(value=mail_conf.get("sender") or "")
-        self.mail_password = tk.StringVar(value=mail_conf.get("password") or "")
-        self.mail_receiver = tk.StringVar(value=mail_conf.get("receiver") or "")
-        self.mail_subject = tk.StringVar(value=mail_conf.get("subject") or "")
-        self.mail_body = tk.StringVar(value=mail_conf.get("body") or "")
+        # ---- 搜索 ----
+        self.search_field = ft.TextField(
+            label="搜索 ID", expand=True, on_submit=lambda e: self.do_search())
+        self.btn_search = ft.Button("搜索", on_click=lambda e: self.do_search())
 
-        self._conf_vars = [
-            self.download_dir, self.to_pdf, self.thread_image, self.thread_photo,
-            self.username, self.password,
-            self.mail_enable, self.mail_server, self.mail_port, self.mail_sender,
-            self.mail_password, self.mail_receiver, self.mail_subject, self.mail_body,
-        ]
+        self.result_text = ft.Text("", selectable=True, size=12)
+        self.result_box = ft.Container(
+            content=ft.ListView(controls=[self.result_text], padding=6, expand=True),
+            border=ft.Border.all(1, "#cccccc"), border_radius=6,
+            bgcolor="#fafafa", height=96, expand=True, padding=2)
+        self.btn_add = ft.Button("添加", on_click=lambda e: self.add_searched(), disabled=True)
 
-        self._build_ui()
-        self._attach_jm_logger()
+        # ---- 操作行：PDF 开关 + 开始下载 + 状态 + 进度 ----
+        self.to_pdf_switch = ft.Switch(
+            label="生成 PDF", value=bool(app_conf.get("to_pdf", True)),
+            on_change=self._on_conf_change)
+        self.btn_start = ft.Button("开始下载", on_click=lambda e: self.start())
+        self.status_text = ft.Text("就绪", size=12, color=self.COLOR_IDLE, expand=True)
+        self.progress = ft.ProgressRing(visible=False, width=22, height=22, stroke_width=3)
 
-        for var in self._conf_vars:
-            var.trace_add("write", self._on_conf_var_change)
-        self._loading = False
+        # ---- 下载选项（折叠）----
+        self.thread_image_field = ft.TextField(
+            label="图片并发", width=100,
+            value=str(clamp(app_conf.get("thread_image", 30), 1, 50)),
+            on_change=self._on_conf_change)
+        self.thread_photo_field = ft.TextField(
+            label="章节并发", width=100,
+            value=str(clamp(app_conf.get("thread_photo", 16), 1, 64)),
+            on_change=self._on_conf_change)
+        self.username_field = ft.TextField(
+            label="账号（可选）", expand=True, value=app_conf.get("username") or "",
+            on_change=self._on_conf_change)
+        self.password_field = ft.TextField(
+            label="密码", expand=True, password=True,
+            value=app_conf.get("password") or "", on_change=self._on_conf_change)
 
-        root.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.root.after(100, self._poll_queue)
-
-    def _build_ui(self):
-        pad = {"padx": 8, "pady": 4}
-        outer = ttk.Frame(self.root)
-        outer.pack(fill="both", expand=True, padx=8, pady=6)
-
-        # ===== 下载任务 =====
-        box_task = ttk.LabelFrame(outer, text="下载任务")
-        box_task.pack(fill="x", **pad)
-        box_task.columnconfigure(1, weight=1)
-
-        ttk.Label(box_task, text="本子 ID：").grid(row=0, column=0, sticky="e", padx=6, pady=4)
-        ttk.Entry(box_task, textvariable=self.ids_var).grid(row=0, column=1, sticky="ew", padx=4, pady=4)
-        ttk.Button(box_task, text="清空", width=BTN_WIDTH,
-                   command=lambda: self.ids_var.set("")).grid(row=0, column=2, sticky="ew", padx=(4, 6), pady=4)
-
-        ttk.Label(box_task, text="下载目录：").grid(row=1, column=0, sticky="e", padx=6, pady=4)
-        ttk.Entry(box_task, textvariable=self.download_dir).grid(row=1, column=1, sticky="ew", padx=4, pady=4)
-        ttk.Button(box_task, text="浏览...", width=BTN_WIDTH,
-                   command=self._choose_dir).grid(row=1, column=2, sticky="ew", padx=(4, 6), pady=4)
-
-        ttk.Label(box_task, text="多个 ID 用逗号或空格分隔；下载目录支持相对路径（基于程序目录）",
-                  foreground="#777").grid(row=2, column=1, sticky="w", padx=4, pady=(0, 4))
-
-        # ===== 本子搜索 =====
-        box_search = ttk.LabelFrame(outer, text="本子搜索")
-        box_search.pack(fill="x", **pad)
-        box_search.columnconfigure(1, weight=1)
-
-        ttk.Label(box_search, text="搜索 ID：").grid(row=0, column=0, sticky="e", padx=6, pady=4)
-        search_entry = ttk.Entry(box_search, textvariable=self.search_var)
-        search_entry.grid(row=0, column=1, sticky="ew", padx=4, pady=4)
-        search_entry.bind("<Return>", lambda e: self.do_search())
-        self.btn_search = ttk.Button(box_search, text="搜索", width=BTN_WIDTH, command=self.do_search)
-        self.btn_search.grid(row=0, column=2, sticky="ew", padx=(4, 6), pady=4)
-
-        ttk.Label(box_search, text="搜索结果：").grid(row=1, column=0, sticky="e", padx=6, pady=4)
-        # 用 Text 替代 Entry 以支持自动换行
-        self.result_text = scrolledtext.ScrolledText(
-            box_search, height=3, wrap="word", state="disabled",
-            font=("Consolas", 9), background="#f5f5f5", foreground="#222",
+        opt_tile = ft.ExpansionTile(
+            title=ft.Text("下载选项"),
+            controls=[ft.Column([
+                ft.Row([self.thread_image_field, self.thread_photo_field], spacing=16),
+                ft.Row([self.username_field, self.password_field], spacing=16),
+            ], spacing=14)],
+            controls_padding=ft.Padding.only(left=8, right=8, top=14, bottom=8),
         )
-        self.result_text.grid(row=1, column=1, sticky="ew", padx=4, pady=4)
-        self.btn_add = ttk.Button(box_search, text="添加", width=BTN_WIDTH, command=self.add_searched)
-        self.btn_add.grid(row=1, column=2, sticky="ew", padx=(4, 6), pady=4)
 
-        # ===== 下载选项（折叠式）=====
-        self.collapsible_opt = CollapsibleFrame(outer, "下载选项（展开更多设置）", self.to_pdf)
-        self.collapsible_opt.pack(fill="x", **pad)
+        # ---- 邮件推送（折叠）----
+        self.mail_enable_switch = ft.Switch(
+            label="启用邮件推送", value=bool(mail_conf.get("enable", False)),
+            on_change=self._on_conf_change)
+        self.mail_server_field = ft.TextField(
+            label="服务器", expand=True, value=mail_conf.get("server") or "smtp.qq.com",
+            on_change=self._on_conf_change)
+        self.mail_port_field = ft.TextField(
+            label="端口", width=80, value=str(mail_conf.get("port", 465)),
+            on_change=self._on_conf_change)
+        self.mail_sender_field = ft.TextField(
+            label="发件邮箱", expand=True, value=mail_conf.get("sender") or "",
+            on_change=self._on_conf_change)
+        self.mail_password_field = ft.TextField(
+            label="授权码", expand=True, password=True,
+            value=mail_conf.get("password") or "", on_change=self._on_conf_change)
+        self.mail_receiver_field = ft.TextField(
+            label="收件邮箱（留空则发给自己）", expand=True,
+            value=mail_conf.get("receiver") or "", on_change=self._on_conf_change)
+        self.mail_subject_field = ft.TextField(
+            label="邮件标题", expand=True, value=mail_conf.get("subject") or "",
+            on_change=self._on_conf_change)
+        self.mail_body_field = ft.TextField(
+            label="邮件正文", expand=True, value=mail_conf.get("body") or "",
+            on_change=self._on_conf_change)
 
-        opt_body = self.collapsible_opt.body()
-        opt_body.columnconfigure(1, weight=1)
-
-        ttk.Label(opt_body, text="图片并发：").grid(row=0, column=0, sticky="e", padx=6, pady=4)
-        ttk.Spinbox(opt_body, from_=1, to=50, width=5,
-                    textvariable=self.thread_image).grid(row=0, column=1, sticky="w", padx=4, pady=4)
-        ttk.Label(opt_body, text="章节并发：").grid(row=0, column=2, sticky="e", padx=(12, 4), pady=4)
-        ttk.Spinbox(opt_body, from_=1, to=64, width=5,
-                    textvariable=self.thread_photo).grid(row=0, column=3, sticky="w", padx=4, pady=4)
-
-        ttk.Label(opt_body, text="账号（可选）：").grid(row=1, column=0, sticky="e", padx=6, pady=4)
-        ttk.Entry(opt_body, textvariable=self.username).grid(row=1, column=1, columnspan=3, sticky="ew", padx=4, pady=4)
-
-        ttk.Label(opt_body, text="密码：").grid(row=2, column=0, sticky="e", padx=6, pady=4)
-        ttk.Entry(opt_body, textvariable=self.password, show="*").grid(row=2, column=1, columnspan=3, sticky="ew", padx=4, pady=4)
-
-        # ===== 邮件推送（折叠式）=====
-        self.collapsible_mail = CollapsibleFrame(outer, "邮件推送（展开更多设置）", self.mail_enable)
-        self.collapsible_mail.pack(fill="x", **pad)
-
-        mail_body = self.collapsible_mail.body()
-        mail_body.columnconfigure(1, weight=1)
-
-        ttk.Label(mail_body, text="服务器：").grid(row=0, column=0, sticky="e", padx=6, pady=3)
-        ttk.Entry(mail_body, textvariable=self.mail_server).grid(row=0, column=1, sticky="ew", padx=4, pady=3)
-        ttk.Label(mail_body, text="端口：").grid(row=0, column=2, sticky="e", padx=(12, 4), pady=3)
-        ttk.Entry(mail_body, textvariable=self.mail_port, width=8).grid(row=0, column=3, sticky="w", padx=4, pady=3)
-
-        ttk.Label(mail_body, text="发件邮箱：").grid(row=1, column=0, sticky="e", padx=6, pady=3)
-        ttk.Entry(mail_body, textvariable=self.mail_sender).grid(row=1, column=1, sticky="ew", padx=4, pady=3)
-        ttk.Label(mail_body, text="授权码：").grid(row=1, column=2, sticky="e", padx=(12, 4), pady=3)
-        ttk.Entry(mail_body, textvariable=self.mail_password, show="*").grid(row=1, column=3, sticky="w", padx=4, pady=3)
-
-        ttk.Label(mail_body, text="收件邮箱：").grid(row=2, column=0, sticky="e", padx=6, pady=3)
-        ttk.Entry(mail_body, textvariable=self.mail_receiver).grid(row=2, column=1, columnspan=3, sticky="ew", padx=4, pady=3)
-        ttk.Label(mail_body, text="留空则发给自己", foreground="#777").grid(row=3, column=1, sticky="w", padx=4, pady=(0, 3))
-
-        ttk.Label(mail_body, text="邮件标题：").grid(row=4, column=0, sticky="e", padx=6, pady=3)
-        ttk.Entry(mail_body, textvariable=self.mail_subject).grid(row=4, column=1, columnspan=3, sticky="ew", padx=4, pady=3)
-
-        ttk.Label(mail_body, text="邮件正文：").grid(row=5, column=0, sticky="e", padx=6, pady=3)
-        ttk.Entry(mail_body, textvariable=self.mail_body).grid(row=5, column=1, columnspan=3, sticky="ew", padx=4, pady=3)
-
-        # ===== 操作按钮 =====
-        box_btn = ttk.Frame(outer)
-        box_btn.pack(fill="x", **pad)
-
-        self.btn_start = ttk.Button(box_btn, text="开始下载", command=self.start)
-        self.btn_start.pack(side="left", padx=(6, 4))
-        ttk.Button(box_btn, text="打开下载目录", command=self._open_dir).pack(side="left", padx=4)
-        ttk.Button(box_btn, text="清空日志", command=self._clear_log).pack(side="left", padx=4)
-
-        self.progress = ttk.Progressbar(box_btn, mode="indeterminate", length=120)
-        self.progress.pack(side="right", padx=6)
-
-        self.status_var = tk.StringVar(value="就绪")
-        ttk.Label(box_btn, textvariable=self.status_var, foreground="#444").pack(side="right", padx=6)
-
-        # ===== 日志 =====
-        box_log = ttk.LabelFrame(outer, text="运行日志")
-        box_log.pack(fill="both", expand=True, **pad)
-
-        self.log_widget = scrolledtext.ScrolledText(
-            box_log, height=8, state="disabled", wrap="word",
-            font=("Consolas", 9), background="#1e1e1e", foreground="#dcdcdc",
+        mail_tile = ft.ExpansionTile(
+            title=ft.Text("邮件推送"),
+            controls=[ft.Column([
+                self.mail_enable_switch,
+                ft.Row([self.mail_server_field, self.mail_port_field], spacing=10),
+                ft.Row([self.mail_sender_field, self.mail_password_field], spacing=10),
+                self.mail_receiver_field,
+                self.mail_subject_field,
+                self.mail_body_field,
+            ], spacing=14)],
+            controls_padding=ft.Padding.only(left=8, right=8, top=14, bottom=8),
         )
-        self.log_widget.pack(fill="both", expand=True, padx=4, pady=4)
 
-    # ------------------------------ 配置同步 ------------------------------
-    def _on_conf_var_change(self, *_):
-        if self._loading:
-            return
-        self._sync_conf_from_ui()
-        if self._save_job is not None:
-            self.root.after_cancel(self._save_job)
-        self._save_job = self.root.after(self.SAVE_DELAY_MS, self._flush_conf)
+        # ---- 日志 ----
+        self.log_list = ft.ListView(expand=True, auto_scroll=True, padding=6, spacing=2)
+        self.log_box = ft.Container(
+            content=self.log_list, border=ft.Border.all(1, "#333333"),
+            border_radius=6, bgcolor="#1e1e1e", height=200, padding=2)
 
-    def _sync_conf_from_ui(self):
-        self.conf["app"] = {
-            "download_dir": self.download_dir.get().strip() or "./download",
-            "to_pdf": bool(self.to_pdf.get()),
-            "thread_image": self._safe_int(self.thread_image, 30),
-            "thread_photo": self._safe_int(self.thread_photo, 16),
-            "username": self.username.get(),
-            "password": self.password.get(),
-        }
-        self.conf["mail"] = {
-            "enable": bool(self.mail_enable.get()),
-            "server": self.mail_server.get().strip() or "smtp.qq.com",
-            "port": self._safe_int(self.mail_port, 465),
-            "sender": self.mail_sender.get().strip(),
-            "password": self.mail_password.get(),
-            "receiver": self.mail_receiver.get().strip(),
-            "subject": self.mail_subject.get(),
-            "body": self.mail_body.get(),
-        }
+        # ---- 目录选择器（Flet 1.0 中 FilePicker 为 service，需注册到 page.services）----
+        self.picker = ft.FilePicker()
+        page.services.append(self.picker)
 
-    @staticmethod
-    def _safe_int(var, default):
-        try:
-            return int(var.get())
-        except (tk.TclError, ValueError):
-            return default
+        # 表单区可滚动：展开折叠面板时内容超出窗口高度时出现右侧滚动条，
+        # 无需手动拉高窗口；spacing 加大避免输入框标签与上一个输入框贴在一起
+        form_col = ft.Column([
+            ft.Row([self.ids_field, self.btn_clear_ids], spacing=8),
+            ft.Row([self.dir_field, self.btn_browse], spacing=8),
+            ft.Row([self.search_field, self.btn_search], spacing=8),
+            ft.Row([self.result_box, self.btn_add], spacing=8),
+            ft.Row([self.to_pdf_switch, self.btn_start, self.status_text, self.progress],
+                   spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            opt_tile,
+            mail_tile,
+        ], scroll=ft.ScrollMode.AUTO, spacing=18, expand=True)
 
-    def _flush_conf(self):
-        self._save_job = None
-        try:
-            save_conf(self.conf)
-        except OSError as e:
-            self._set_status("配置保存失败：%s" % e)
-            return
-        if not self.running and not self.searching:
-            self._set_status("配置已同步 → %s" % CONF_FILENAME)
+        page.add(ft.Column([form_col, self.log_box], expand=True, spacing=10))
 
-    def _on_close(self):
-        if self._save_job is not None:
-            self.root.after_cancel(self._save_job)
-            self._save_job = None
-        self._sync_conf_from_ui()
-        try:
-            save_conf(self.conf)
-        except OSError:
-            pass
-        self.root.destroy()
-
-    def _set_status(self, text):
-        self.status_var.set(text)
-
-    # ------------------------------ 日志 ------------------------------
-    def _attach_jm_logger(self):
-        handler = QueueLogHandler(self.q)
+        handler = _UiLogHandler(self.append_log)
         handler.setFormatter(logging.Formatter("%(asctime)s  %(message)s", "%H:%M:%S"))
         logger = logging.getLogger("jmcomic")
         logger.setLevel(logging.INFO)
         logger.addHandler(handler)
 
-    def log(self, message):
-        self.q.put(("log", message))
-
-    def _poll_queue(self):
+    # ------------------------------ 工具 ------------------------------
+    def _update(self):
         try:
-            while True:
-                item = self.q.get_nowait()
-                kind = item[0]
-                if kind == "log":
-                    self._append_log(item[1])
-                elif kind == "search_done":
-                    self._on_search_done(item[1], item[2], item[3])
-                elif kind == "task_done":
-                    self._finish(item[1], item[2])
-        except queue.Empty:
+            self.page.update()
+        except Exception:
             pass
-        self.root.after(100, self._poll_queue)
 
-    def _append_log(self, text):
-        self.log_widget.configure(state="normal")
-        self.log_widget.insert("end", text.rstrip("\n") + "\n")
-        self.log_widget.see("end")
-        self.log_widget.configure(state="disabled")
+    def _set_status(self, text, color=None):
+        self.status_text.value = text
+        self.status_text.color = color or self.COLOR_IDLE
+        self._update()
 
-    def _clear_log(self):
-        self.log_widget.configure(state="normal")
-        self.log_widget.delete("1.0", "end")
-        self.log_widget.configure(state="disabled")
+    @staticmethod
+    def _field_int(field, default):
+        try:
+            return int(str(field.value).strip())
+        except (TypeError, ValueError):
+            return default
 
-    def _set_result_text(self, text):
-        """设置搜索结果文本（自动换行）。"""
-        self.result_text.configure(state="normal")
-        self.result_text.delete("1.0", "end")
-        self.result_text.insert("1.0", text)
-        self.result_text.configure(state="disabled")
+    def append_log(self, message):
+        try:
+            self.log_list.controls.append(
+                ft.Text(message, size=11, color="#dcdcdc", selectable=True))
+            if len(self.log_list.controls) > 500:
+                del self.log_list.controls[0:len(self.log_list.controls) - 500]
+            self._update()
+        except Exception:
+            pass
+
+    # ------------------------------ 配置同步 ------------------------------
+    def _on_conf_change(self, e=None):
+        self._sync_conf_from_ui()
+        if self._save_timer is not None:
+            self._save_timer.cancel()
+        self._save_timer = threading.Timer(self.SAVE_DELAY, self._flush_conf)
+        self._save_timer.daemon = True
+        self._save_timer.start()
+
+    def _sync_conf_from_ui(self):
+        self.conf["app"] = {
+            "download_dir": (self.dir_field.value or "").strip() or "./download",
+            "to_pdf": bool(self.to_pdf_switch.value),
+            "thread_image": self._field_int(self.thread_image_field, 30),
+            "thread_photo": self._field_int(self.thread_photo_field, 16),
+            "username": self.username_field.value or "",
+            "password": self.password_field.value or "",
+        }
+        self.conf["mail"] = {
+            "enable": bool(self.mail_enable_switch.value),
+            "server": (self.mail_server_field.value or "").strip() or "smtp.qq.com",
+            "port": self._field_int(self.mail_port_field, 465),
+            "sender": (self.mail_sender_field.value or "").strip(),
+            "password": self.mail_password_field.value or "",
+            "receiver": (self.mail_receiver_field.value or "").strip(),
+            "subject": self.mail_subject_field.value or "",
+            "body": self.mail_body_field.value or "",
+        }
+
+    def _flush_conf(self):
+        self._save_timer = None
+        try:
+            save_conf(self.conf)
+        except OSError as exc:
+            self._set_status("配置保存失败：%s" % exc, self.COLOR_ERR)
+
+    # ------------------------------ 交互 ------------------------------
+    def _on_clear_ids(self, e):
+        self.ids_field.value = ""
+        self._update()
+
+    async def _on_browse(self, e):
+        # Flet 1.0: get_directory_path 为异步方法，直接返回所选路径
+        path = await self.picker.get_directory_path(dialog_title="选择下载目录")
+        if path:
+            self.dir_field.value = os.path.normpath(path)
+            self._on_conf_change()
 
     # ------------------------------ 搜索 ------------------------------
     def do_search(self):
         if self.searching:
             return
-        aid = self.search_var.get().strip()
+        aid = (self.search_field.value or "").strip()
         if not aid:
-            messagebox.showwarning(APP_NAME, "请先在搜索框中输入本子 ID")
+            self._set_status("请先在搜索框中输入本子 ID", self.COLOR_ERR)
             return
         self.searching = True
-        self.btn_search.configure(state="disabled")
-        self.btn_add.configure(state="disabled")
-        self._set_result_text("")
+        self.btn_search.disabled = True
+        self.btn_add.disabled = True
+        self.result_text.value = ""
         self.searched_id = ""
         self._set_status("搜索中...")
-        threading.Thread(target=self._search_worker, args=(aid,), daemon=True).start()
+        self.page.run_thread(self._search_worker, aid)
 
     def _search_worker(self, aid):
         try:
+            self._sync_conf_from_ui()
             option = build_option(self.conf)
             client = option.new_jm_client()
             detail = client.get_album_detail(aid)
-            # 提取标签
             tags = ""
             try:
                 tag_list = getattr(detail, "tags", None) or []
-                if isinstance(tag_list, list):
-                    tags = ", ".join(str(t) for t in tag_list[:10])
-                    if len(tag_list) > 10:
-                        tags += " ..."
-                elif isinstance(tag_list, dict):
-                    all_tags = []
+                if isinstance(tag_list, dict):
+                    flat = []
                     for v in tag_list.values():
-                        if isinstance(v, list):
-                            all_tags.extend(v)
-                        else:
-                            all_tags.append(str(v))
-                    tags = ", ".join(all_tags[:10])
-                    if len(all_tags) > 10:
-                        tags += " ..."
+                        flat.extend(v if isinstance(v, list) else [v])
+                    tag_list = flat
+                tags = ", ".join(str(t) for t in list(tag_list)[:10])
+                if len(tag_list) > 10:
+                    tags += " ..."
             except Exception:
                 tags = ""
-            # 顺序：id / 页数·章节 / 名称 / 标签
             text = "ID: %s\n页数: %s / 章节: %d\n名称: %s" % (
-                detail.id, detail.page_count, len(detail), detail.title,
-            )
+                detail.id, detail.page_count, len(detail), detail.title)
             if tags:
                 text += "\n标签: %s" % tags
-            self.q.put(("search_done", True, text, str(detail.id)))
-        except Exception as e:
-            self.q.put(("search_done", False, "搜索失败：%s" % e, ""))
-
-    def _on_search_done(self, ok, text, aid):
+            ok, searched = True, str(detail.id)
+        except Exception as exc:
+            text, ok, searched = "搜索失败：%s" % exc, False, ""
         self.searching = False
-        self.btn_search.configure(state="normal")
-        self.btn_add.configure(state="normal" if ok else "disabled")
-        self._set_result_text(text)
-        self.searched_id = aid if ok else ""
-        self._set_status("搜索完成" if ok else "搜索失败")
-        if ok:
-            self.log("搜索结果：%s" % text.replace("\n", " | "))
-        else:
-            self.log(text)
+        self.btn_search.disabled = False
+        self.btn_add.disabled = not ok
+        self.result_text.value = text
+        self.searched_id = searched
+        self._set_status("搜索完成" if ok else "搜索失败",
+                         self.COLOR_OK if ok else self.COLOR_ERR)
+        self.append_log("搜索结果：%s" % text.replace("\n", " | "))
 
     def add_searched(self):
         aid = self.searched_id
         if not aid:
-            messagebox.showinfo(APP_NAME, "没有可添加的搜索结果，请先搜索")
+            self._set_status("没有可添加的搜索结果，请先搜索", self.COLOR_ERR)
             return
-        ids = parse_ids(self.ids_var.get())
+        ids = parse_ids(self.ids_field.value)
         if aid in ids:
             self._set_status("ID %s 已在列表中" % aid)
             return
         ids.append(aid)
-        self.ids_var.set(", ".join(ids))
-        self._set_status("已添加 %s 到下载列表" % aid)
+        self.ids_field.value = ", ".join(ids)
+        self._set_status("已添加 %s 到下载列表" % aid, self.COLOR_OK)
 
-    # ------------------------------ 交互 ------------------------------
-    def _choose_dir(self):
-        current = resolve_path(self.download_dir.get())
-        path = filedialog.askdirectory(initialdir=current if os.path.isdir(current) else app_dir())
-        if path:
-            self.download_dir.set(os.path.normpath(path))
-
-    def _open_dir(self):
-        path = resolve_path(self.download_dir.get())
-        os.makedirs(path, exist_ok=True)
-        os.startfile(path)
-
-    def _set_running(self, running):
-        self.running = running
-        if running:
-            self.btn_start.configure(state="disabled")
-            self.progress.start(12)
-        else:
-            self.btn_start.configure(state="normal")
-            self.progress.stop()
-
+    # ------------------------------ 下载 ------------------------------
     def start(self):
         if self.running:
             return
-        ids = parse_ids(self.ids_var.get())
+        ids = parse_ids(self.ids_field.value)
         if not ids:
-            messagebox.showwarning(APP_NAME, "请先输入至少一个本子 ID")
+            self._set_status("请先输入至少一个本子 ID", self.COLOR_ERR)
             return
         self._sync_conf_from_ui()
         conf = copy.deepcopy(self.conf)
-        download_dir = resolve_path(conf["app"].get("download_dir"))
         mail_conf = conf["mail"]
         if mail_conf.get("enable") and not (mail_conf.get("sender") and mail_conf.get("password")):
-            messagebox.showwarning(APP_NAME, "已勾选邮件推送，请填写发件邮箱与授权码")
+            self._set_status("已启用邮件推送：请填写发件邮箱与授权码", self.COLOR_ERR)
             return
-        self._set_running(True)
+        try:
+            save_conf(self.conf)
+        except OSError:
+            pass
+        download_dir = resolve_path(conf["app"].get("download_dir"))
+        self.running = True
+        self.btn_start.disabled = True
+        self.progress.visible = True
         self._set_status("下载中...")
-        threading.Thread(target=self._run_task, args=(ids, download_dir, conf), daemon=True).start()
+        self.page.run_thread(self._run_task, ids, download_dir, conf)
 
     def _run_task(self, ids, download_dir, conf):
         try:
             os.makedirs(download_dir, exist_ok=True)
             option = build_option(conf)
-            self.log("开始下载 %d 个本子：%s" % (len(ids), ", ".join(ids)))
-            self.log("下载目录：%s" % download_dir)
+            self.append_log("开始下载 %d 个本子：%s" % (len(ids), ", ".join(ids)))
+            self.append_log("下载目录：%s" % download_dir)
             result = jmcomic.download_album(ids, option)
             failed = getattr(result, "failed", {}) or {}
             pdfs = collect_pdfs(result)
             for jmid, err in failed.items():
-                self.log("下载失败 [%s]：%s" % (jmid, err))
+                self.append_log("下载失败 [%s]：%s" % (jmid, err))
             if conf["app"].get("to_pdf", True):
                 if pdfs:
-                    self.log("共生成 %d 个 PDF：" % len(pdfs))
+                    self.append_log("共生成 %d 个 PDF：" % len(pdfs))
                     for p in pdfs:
-                        self.log("  %s" % p)
+                        self.append_log("  %s" % p)
                 else:
-                    self.log("未生成任何 PDF 文件")
+                    self.append_log("未生成任何 PDF 文件")
+            else:
+                self.append_log("已按设置跳过 PDF 合并")
             mail_conf = conf["mail"]
             if mail_conf.get("enable"):
                 if pdfs:
-                    self.log("正在发送邮件...")
+                    self.append_log("正在发送邮件...")
                     try:
-                        send_mail(mail_conf, pdfs, self.log)
-                        self.log("邮件发送成功！")
-                    except Exception as e:
-                        self.log("邮件发送失败：%s" % e)
+                        send_mail(mail_conf, pdfs, self.append_log)
+                        self.append_log("邮件发送成功！")
+                    except Exception as exc:
+                        self.append_log("邮件发送失败：%s" % exc)
                 else:
-                    self.log("没有可发送的 PDF，跳过邮件推送")
+                    self.append_log("没有可发送的 PDF，跳过邮件推送")
             ok = not failed
             summary = "完成：%d 个本子，%d 个 PDF" % (len(ids) - len(failed), len(pdfs))
-            self.q.put(("task_done", ok, summary if ok else "完成（含失败项），详见日志"))
+            self._finish(ok, summary if ok else "完成（含失败项），详见日志")
         except Exception:
-            self.log("发生错误：\n%s" % traceback.format_exc())
-            self.q.put(("task_done", False, "出错，详见日志"))
+            self.append_log("发生错误：\n%s" % traceback.format_exc())
+            self._finish(False, "出错，详见日志")
 
     def _finish(self, ok, status):
-        self._set_running(False)
-        self._set_status(status)
-        if ok:
-            messagebox.showinfo(APP_NAME, status)
-        else:
-            messagebox.showwarning(APP_NAME, status)
+        self.running = False
+        self.btn_start.disabled = False
+        self.progress.visible = False
+        self._set_status(status, self.COLOR_OK if ok else self.COLOR_ERR)
 
 
-def main():
-    # 高 DPI 下让界面更清晰
-    try:
-        from ctypes import windll
-        windll.shcore.SetProcessDpiAwareness(1)
-    except Exception:
-        pass
-
-    print("\n" + "=" * 50)
-    print("Jm2PDF v1.2.0 - 禁漫本子下载工具")
-    print("Copyright (c) 2026 WisadelZ")
-    print("Licensed under CC BY-NC-ND 4.0")
-    print("Source: https://github.com/WisadelZ/jm2pdf")
-    print("=" * 50 + "\n")
-
-    root = tk.Tk()
-    
-    # 设置窗口标题栏左侧的小图标（优先使用打包后的临时目录，失败则从程序目录找）
-    for icon_name in ("icon.ico", "icon.png"):
-        icon_path = os.path.join(bundle_dir(), icon_name)
-        if os.path.isfile(icon_path):
-            try:
-                root.iconbitmap(icon_path)
-                break
-            except Exception:
-                pass
-        icon_path = os.path.join(app_dir(), icon_name)
-        if os.path.isfile(icon_path):
-            try:
-                root.iconbitmap(icon_path)
-                break
-            except Exception:
-                pass
-
-    try:
-        style = ttk.Style(root)
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
-    except Exception:
-        pass
-
-    App(root)
-    root.mainloop()
+def main(page: ft.Page):
+    Jm2PdfUI(page)
 
 
 if __name__ == "__main__":
-    main()
+    if hasattr(ft, "run"):
+        ft.run(main)
+    else:
+        ft.app(target=main)

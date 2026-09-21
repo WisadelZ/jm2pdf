@@ -1,70 +1,60 @@
 # -*- coding: utf-8 -*-
-"""jm2pdf 打包脚本：使用项目内置的 portable Python + PyInstaller 生成单文件 exe。
+"""jm2pdf 打包脚本：使用 flet pack（封装 PyInstaller）生成单文件 exe。
 
 生成的 exe 以「名称-v版本号」命名，版本号取自 app.py 中的 APP_VERSION。
+
+注意：flet pack 在 -y 模式下会 rmtree 掉 --distpath 指定的目录，
+因此 distpath 必须使用独立的 dist 子目录，绝不能指向项目目录本身。
 """
 
 import os
+import shutil
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(HERE)
-PORTABLE_PY = os.path.join(PROJECT_ROOT, "python")
-
-# 让 PyInstaller 的 tkinter hook 能定位到 portable Python 中的 tcl/tk 数据
-os.environ["TCL_LIBRARY"] = os.path.join(PORTABLE_PY, "tcl", "tcl8.6")
-os.environ["TK_LIBRARY"] = os.path.join(PORTABLE_PY, "tcl", "tk8.6")
+PORTABLE_FLET = os.path.join(PROJECT_ROOT, "python", "Scripts", "flet.exe")
+DIST_DIR = os.path.join(HERE, "dist")
 
 sys.path.insert(0, HERE)
 from app import APP_NAME, APP_VERSION  # noqa: E402
 
-import PyInstaller.__main__  # noqa: E402
-
 EXE_NAME = "%s-v%s" % (APP_NAME, APP_VERSION)
 
+
+def find_flet_cli():
+    if os.path.isfile(PORTABLE_FLET):
+        return PORTABLE_FLET
+    found = shutil.which("flet")
+    if found:
+        return found
+    raise SystemExit("未找到 flet CLI，请先执行: pip install flet")
+
+
 ARGS = [
-    os.path.join(HERE, "app.py"),
+    find_flet_cli(), "pack", os.path.join(HERE, "app.py"),
     "--name", EXE_NAME,
-    "--onefile",
-    "--windowed",
-    "--noconfirm",
-    "--clean",
-    "-i", "icon.ico",
-    "--distpath", HERE,
-    "--workpath", os.path.join(HERE, "build"),
-    "--specpath", HERE,
+    "--icon", os.path.join(HERE, "icon.ico"),
+    "--distpath", "dist",
     "--add-data", os.path.join(HERE, "conf.yml") + os.pathsep + ".",
-    "--add-data", os.path.join(HERE, "icon.png") + os.pathsep + ".",
-    # jmcomic 及其依赖链中存在动态导入 / 二进制 / 数据文件，逐项收集
-    "--collect-all", "jmcomic",
-    "--collect-all", "common",
-    "--collect-all", "curl_cffi",
-    "--collect-all", "certifi",
-    "--collect-all", "img2pdf",
-    "--collect-all", "pikepdf",
-    # pycryptodome 只需二进制扩展，收集全部子模块会带上庞大的 SelfTest
-    "--collect-binaries", "Crypto",
-    "--exclude-module", "Crypto.SelfTest",
-    # jmcomic 运行时按需（延迟）导入的依赖，静态分析无法发现，需显式声明
-    "--hidden-import", "requests",
-    "--hidden-import", "typing_extensions",
-    "--collect-submodules", "rich",
-    "--collect-all", "zhconv",
-    # 部分库通过 importlib.metadata 读取版本信息
-    "--copy-metadata", "img2pdf",
-    "--copy-metadata", "pikepdf",
-    "--copy-metadata", "pillow",
-    "--copy-metadata", "curl_cffi",
-    "--copy-metadata", "certifi",
-    "--copy-metadata", "jmcomic",
+    "--product-name", "Jm2PDF",
+    "--product-version", APP_VERSION,
+    "--file-version", APP_VERSION,
+    "--company-name", "WisadelZ",
+    "--copyright", "Copyright (c) 2026 WisadelZ, CC BY-NC-ND 4.0",
+    "--file-description", "Jm2PDF - comic downloader & PDF merger",
+    "-y",
 ]
 
 if __name__ == "__main__":
     print("Building %s ..." % EXE_NAME)
-    PyInstaller.__main__.run(ARGS)
-    exe = os.path.join(HERE, EXE_NAME + ".exe")
-    if os.path.isfile(exe):
-        print("OK -> %s (%.1f MB)" % (exe, os.path.getsize(exe) / 1024 / 1024))
+    ret = subprocess.call(ARGS, cwd=HERE)
+    built = os.path.join(DIST_DIR, EXE_NAME + ".exe")
+    target = os.path.join(HERE, EXE_NAME + ".exe")
+    if ret == 0 and os.path.isfile(built):
+        shutil.move(built, target)
+        print("OK -> %s (%.1f MB)" % (target, os.path.getsize(target) / 1024 / 1024))
         sys.exit(0)
-    print("FAILED: exe not found")
+    print("FAILED: exit=%s built=%s" % (ret, os.path.isfile(built)))
     sys.exit(1)

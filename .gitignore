@@ -23,12 +23,11 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# PyInstaller
+# PyInstaller / Flet
 *.spec
+.buildhome/
 
 # Build artifacts
-build/
-dist/
 *.pkg
 *.whl
 
@@ -44,7 +43,6 @@ Thumbs.db
 
 # Logs
 *.log
-*.txt
 
 # Temporary files
 *.tmp

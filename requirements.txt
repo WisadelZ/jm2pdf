@@ -1,0 +1,5 @@
+jmcomic
+pyyaml
+pillow
+img2pdf
+flet
