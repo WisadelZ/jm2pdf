@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """jm2pdf 打包脚本：使用 flet pack（封装 PyInstaller）生成单文件 exe。
 
-生成的 exe 以「名称-v版本号」命名，版本号取自 app.py 中的 APP_VERSION。
+生成的 exe 以「名称-v版本号」命名，版本号取自 core/constants.py 的 APP_VERSION。
+
+app.py 现在只是入口，业务与界面代码拆分在 core、ui、utils 三个源码包中；
+PyInstaller 会依据 app.py 的 import 关系自动收集这些模块，无需额外 --add-data。
 
 注意：flet pack 在 -y 模式下会 rmtree 掉 --distpath 指定的目录，
 因此 distpath 必须使用独立的 dist 子目录，绝不能指向项目目录本身。
@@ -18,7 +21,7 @@ PORTABLE_FLET = os.path.join(PROJECT_ROOT, "python", "Scripts", "flet.exe")
 DIST_DIR = os.path.join(HERE, "dist")
 
 sys.path.insert(0, HERE)
-from app import APP_NAME, APP_VERSION  # noqa: E402
+from core.constants import APP_NAME, APP_VERSION  # noqa: E402
 
 EXE_NAME = "%s-v%s" % (APP_NAME, APP_VERSION)
 

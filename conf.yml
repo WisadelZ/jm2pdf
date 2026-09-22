@@ -2,31 +2,25 @@
 # 界面中的任何修改都会自动同步保存到本文件；也可手动编辑后重启程序生效。
 # 相对路径基于程序（exe）所在目录解析。
 
-version: 2.0.0
-
-# ---------------- 下载选项 ----------------
+version: 2.1.0
 app:
-  download_dir: ./download # 下载目录
-  to_pdf: true # 下载后合并为 PDF
-  thread_image: 30 # 图片并发（1-50）
-  thread_photo: 16 # 章节并发（1-64）
-  username: "" # 账号（可选，留空则不登录）
-  password: "" # 密码（可选）
-
-# ---------------- 邮件推送 ----------------
+  download_dir: ./download
+  to_pdf: true
+  thread_image: 30
+  thread_photo: 16
+  username: ''
+  password: ''
+  theme_mode: light
+  language: zh_cn
 mail:
-  enable: false # 是否在下载完成后发送邮件
-  server: smtp.qq.com # SMTP 服务器
-  port: 465 # 端口，465 走 SSL，其余走 STARTTLS
-  sender: "" # 发件邮箱
-  password: "" # 邮箱授权码（不是登录密码）
-  receiver: "" # 收件邮箱，留空则发给自己
+  enable: false
+  server: smtp.qq.com
+  port: 465
+  sender: ''
+  password: ''
+  receiver: ''
   subject: downloaded comic
   body: jmcomic download successfully.
-
-# ---------------- jmcomic 原生配置 ----------------
-# 其中 dir_rule.base_dir、img2pdf 的 pdf_dir、threading 并发数、login 插件
-# 会在运行时被上面的 app 段覆盖，此处保留其余可调项。
 option:
   log: true
   download:
@@ -36,7 +30,7 @@ option:
     base_dir: ./download
   plugins:
     after_photo:
-      - plugin: img2pdf
-        kwargs:
-          pdf_dir: ./download
-          filename_rule: Pid
+    - plugin: img2pdf
+      kwargs:
+        pdf_dir: ./download
+        filename_rule: Pid

@@ -1,0 +1,34 @@
+# -*- coding: utf-8 -*-
+"""全局常量：应用元信息、窗口尺寸、状态颜色、路由、界面字体。
+
+Copyright (c) 2026 WisadelZ
+
+This work is licensed under the CC BY-NC-ND 4.0 International License.
+You may obtain a copy of the License at
+
+    https://creativecommons.org/licenses/by-nc-nd/4.0/
+
+Unauthorized modification, distribution of modified versions,
+or commercial use is strictly prohibited.
+"""
+
+APP_NAME = "jm2pdf"
+APP_VERSION = "2.1.0"
+
+# 默认窗口尺寸
+WINDOW_WIDTH = 660
+WINDOW_HEIGHT = 700
+WINDOW_MIN_WIDTH = 540
+WINDOW_MIN_HEIGHT = 520
+
+# 状态颜色
+COLOR_OK = "#27ae60"
+COLOR_ERR = "#c0392b"
+COLOR_IDLE = "#666666"
+
+# 路由
+ROUTE_MAIN = "/"
+ROUTE_SETTINGS = "/settings"
+
+# 界面字体：微软雅黑 UI（Windows 10/11 自带），保证中英文混排字重均匀
+UI_FONT_FAMILY = "Microsoft YaHei UI"
