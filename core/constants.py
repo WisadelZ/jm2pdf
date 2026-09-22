@@ -13,7 +13,7 @@ or commercial use is strictly prohibited.
 """
 
 APP_NAME = "jm2pdf"
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.1.2"
 
 # 项目信息（帮助页展示用）
 APP_AUTHOR = "WisadelZ"

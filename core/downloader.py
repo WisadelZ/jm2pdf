@@ -5,6 +5,7 @@ import copy
 import os
 import re
 import smtplib
+import urllib.request
 
 import jmcomic
 import yaml
@@ -22,10 +23,32 @@ DEFAULT_FILENAME_RULE = "Pname"
 # PDF 插件 key：本工具插件会把元数据写进 PDF；img2pdf 为旧配置里的 key，一并识别并替换
 PDF_PLUGIN_KEYS = (pdf_metadata.PLUGIN_KEY, "img2pdf")
 
+# 封面缩略图尺寸后缀：与网站搜索列表一致，3:4 竖版
+COVER_SIZE = "_3x4"
+
+# 图片 CDN 会拒绝空 User-Agent（返回 403），取图时显式带一个
+COVER_HEADERS = {"User-Agent": "Mozilla/5.0"}
+
 
 def album_url(album_id, domain=SITE_DOMAIN):
     """拼接本子在网站上的链接，便于在界面里跳转查看。"""
     return jmcomic.JmcomicText.format_album_url(str(album_id), domain)
+
+
+def cover_url(album_id, size=COVER_SIZE):
+    """拼接封面图 URL（只拼地址，不下载）。"""
+    return jmcomic.JmcomicText.get_album_cover_url(str(album_id), size=size)
+
+
+def fetch_cover(album_id, size=COVER_SIZE):
+    """取封面图字节，供界面控件直接显示（只在内存中，不落盘）；失败返回 None。"""
+    try:
+        request = urllib.request.Request(cover_url(album_id, size), headers=COVER_HEADERS)
+        with urllib.request.urlopen(request, timeout=15) as resp:
+            # 不存在的本子会返回 200 + 空响应，这里按失败处理
+            return resp.read() or None
+    except Exception:      # 封面只是搜索结果的点缀，任何异常都不应影响搜索本身
+        return None
 
 
 def pdf_filename_rule(dir_rule_dsl):

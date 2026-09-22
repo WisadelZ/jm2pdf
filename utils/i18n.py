@@ -72,6 +72,7 @@ _STRINGS = {
         "search_failed": "搜索失败：{error}",
         "search_result_log": "搜索结果：{text}",
         "search_link": "网页链接",
+        "cover_load_failed": "封面加载失败",
 
         # 状态提示
         "status_ready": "就绪",
@@ -228,6 +229,7 @@ _STRINGS = {
         "search_failed": "搜尋失敗：{error}",
         "search_result_log": "搜尋結果：{text}",
         "search_link": "網頁連結",
+        "cover_load_failed": "封面載入失敗",
 
         "status_ready": "就緒",
         "status_search_need_id": "請先在搜尋框中輸入本子 ID",
@@ -380,6 +382,7 @@ _STRINGS = {
         "search_failed": "Search failed: {error}",
         "search_result_log": "Search result: {text}",
         "search_link": "Web page",
+        "cover_load_failed": "Failed to load cover",
 
         "status_ready": "Ready",
         "status_search_need_id": "Enter a comic ID in the search box first",

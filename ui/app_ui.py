@@ -21,7 +21,8 @@ from core.constants import (APP_VERSION, COLOR_ERR, COLOR_IDLE, COLOR_OK,
                             ROUTE_EXPLORER, ROUTE_HELP, ROUTE_MAIN,
                             ROUTE_SETTINGS, UI_FONT_FAMILY, WINDOW_HEIGHT,
                             WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH, WINDOW_WIDTH)
-from core.downloader import album_url, build_option, collect_pdfs, send_mail
+from core.downloader import (album_url, build_option, collect_pdfs, fetch_cover,
+                             send_mail)
 from core.logging_bridge import UiLogHandler
 from ui.explorer_page import ExplorerPage
 from ui.help_page import HelpPage
@@ -46,6 +47,7 @@ class AppUI:
         self.searching = False
         self.searched_id = ""
         self.searched_url = ""
+        self.searched_cover = None      # 封面图字节，只留在内存里，不落盘
         self.search_text = ""
         self.status_text_value = self.t("status_ready")
         self.status_color = COLOR_IDLE
@@ -307,6 +309,7 @@ class AppUI:
         self.searching = True
         self.searched_id = ""
         self.searched_url = ""
+        self.searched_cover = None
         self.search_text = ""
         self.main_page.refresh()
         self.set_status(self.t("status_searching"))
@@ -329,6 +332,7 @@ class AppUI:
             return ""
 
     def _search_worker(self, aid):
+        cover = None
         try:
             option = build_option(self.conf)
             client = option.new_jm_client()
@@ -338,11 +342,14 @@ class AppUI:
             text = self.t(template, id=detail.id, pages=detail.page_count,
                           chapters=len(detail), title=detail.title, tags=tags)
             ok, searched, url = True, str(detail.id), album_url(detail.id)
+            # 封面只用于界面展示，失败不影响搜索结果的呈现
+            cover = fetch_cover(detail.id)
         except Exception as exc:
             text, ok, searched, url = self.t("search_failed", error=exc), False, "", ""
         self.searching = False
         self.searched_id = searched
         self.searched_url = url
+        self.searched_cover = cover
         self.search_text = text
         if self.main_page is not None:
             self.main_page.refresh()

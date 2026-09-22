@@ -12,6 +12,10 @@ import flet as ft
 from core.constants import ROUTE_EXPLORER, ROUTE_HELP, ROUTE_MAIN, ROUTE_SETTINGS
 from utils.helpers import clamp
 
+# 搜索结果框右侧封面缩略图尺寸（3:4，与网站封面图比例一致）
+COVER_WIDTH = 78
+COVER_HEIGHT = 104
+
 
 class MainPage:
     def __init__(self, app):
@@ -49,11 +53,19 @@ class MainPage:
         self.btn_search = ft.Button(self.t("btn_search"), on_click=lambda e: app.search())
 
         self.result_text = ft.Text(spans=[], selectable=True, size=12)
+        # 搜索结果框右侧的封面缩略图：内容按需填充，没有封面时整块留空
+        self.cover_holder = ft.Container(width=COVER_WIDTH, height=COVER_HEIGHT,
+                                         alignment=ft.Alignment.CENTER)
+        self._cover_key = None
         self.result_box = ft.Container(
-            content=ft.ListView(controls=[self.result_text], padding=6, expand=True),
+            content=ft.Row([
+                ft.ListView(controls=[self.result_text], padding=6, expand=True),
+                ft.Container(content=self.cover_holder,
+                             padding=ft.Padding.only(right=6, top=6, bottom=6)),
+            ], spacing=6),
             border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT), border_radius=6,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
-            height=112, expand=True, padding=2)
+            height=COVER_HEIGHT + 16, expand=True, padding=2)
         self.btn_add = ft.Button(self.t("btn_add"), on_click=lambda e: app.add_searched())
 
         # ---- 操作行：PDF 开关 + 开始下载 + 状态 + 进度 ----
@@ -197,7 +209,24 @@ class MainPage:
         self.status_text.value = app.status_text_value
         self.status_text.color = app.status_color
         self.result_text.spans = self._result_spans()
+        self._sync_cover()
         app.update()
+
+    def _sync_cover(self):
+        """按搜索结果同步封面图；只在结果变化时重建，避免刷新时重复加载。"""
+        if self.app.searched_id == self._cover_key:
+            return
+        self._cover_key = self.app.searched_id
+        cover = self.app.searched_cover
+        if not cover:
+            self.cover_holder.content = None
+            return
+        self.cover_holder.content = ft.Image(
+            src=cover, width=COVER_WIDTH, height=COVER_HEIGHT,
+            fit=ft.BoxFit.COVER, border_radius=4,
+            error_content=ft.Icon(ft.Icons.BROKEN_IMAGE, size=20,
+                                  color=ft.Colors.ON_SURFACE_VARIANT,
+                                  tooltip=self.t("cover_load_failed")))
 
     def _result_spans(self):
         """搜索结果文本；搜索成功时在末尾附上可点击的网页链接。"""
