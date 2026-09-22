@@ -3,13 +3,42 @@
 
 import copy
 import os
+import re
 import smtplib
 
 import jmcomic
 import yaml
 
+from core import pdf_metadata
 from core.config import resolve_path
 from utils.helpers import clamp
+
+# 本子网页链接固定使用 18comic.vip：其余镜像域名只支持下载，浏览器直接访问会被拦截
+SITE_DOMAIN = "18comic.vip"
+
+# dir_rule 未配置时的兜底规则（与 jmcomic 默认一致：图片存放在 base_dir/<章节名>）
+DEFAULT_FILENAME_RULE = "Pname"
+
+# PDF 插件 key：本工具插件会把元数据写进 PDF；img2pdf 为旧配置里的 key，一并识别并替换
+PDF_PLUGIN_KEYS = (pdf_metadata.PLUGIN_KEY, "img2pdf")
+
+
+def album_url(album_id, domain=SITE_DOMAIN):
+    """拼接本子在网站上的链接，便于在界面里跳转查看。"""
+    return jmcomic.JmcomicText.format_album_url(str(album_id), domain)
+
+
+def pdf_filename_rule(dir_rule_dsl):
+    """由下载目录规则推导 PDF 文件名规则，取目录规则的最后一段。
+
+    dir_rule 的最后一段就是图片文件夹的名字，PDF 用同一规则命名后，
+    按名称排序时 PDF 与其图片文件夹会紧挨在一起。
+    """
+    segments = [seg.strip() for seg in re.split(r"[/_]", (dir_rule_dsl or "").strip())]
+    segments = [seg for seg in segments if seg]
+    if not segments or segments[-1] == "Bd":
+        return DEFAULT_FILENAME_RULE
+    return segments[-1]
 
 
 def build_option(conf):
@@ -24,7 +53,11 @@ def build_option(conf):
     threading_conf = data.setdefault("download", {}).setdefault("threading", {})
     threading_conf["image"] = clamp(app_conf.get("thread_image", 30), 1, 50)
     threading_conf["photo"] = clamp(app_conf.get("thread_photo", 16), 1, 64)
-    data.setdefault("dir_rule", {})["base_dir"] = download_dir
+
+    dir_rule = data.setdefault("dir_rule", {})
+    dir_rule["base_dir"] = download_dir
+    # PDF 文件名跟随图片文件夹名（取 dir_rule 最后一段），便于按名称归在一起
+    filename_rule = pdf_filename_rule(dir_rule.get("rule"))
 
     plugins = data.setdefault("plugins", {})
     username = (app_conf.get("username") or "").strip()
@@ -38,18 +71,22 @@ def build_option(conf):
     after_photo = plugins.setdefault("after_photo", [])
     if app_conf.get("to_pdf", True):
         for item in after_photo:
-            if isinstance(item, dict) and item.get("plugin") == "img2pdf":
-                item.setdefault("kwargs", {})["pdf_dir"] = download_dir
+            if isinstance(item, dict) and item.get("plugin") in PDF_PLUGIN_KEYS:
+                # 旧配置里的 img2pdf 一并改写成带元数据的插件
+                item["plugin"] = pdf_metadata.PLUGIN_KEY
+                kwargs = item.setdefault("kwargs", {})
+                kwargs["pdf_dir"] = download_dir
+                kwargs["filename_rule"] = filename_rule
                 break
         else:
             after_photo.append({
-                "plugin": "img2pdf",
-                "kwargs": {"pdf_dir": download_dir, "filename_rule": "Pid"},
+                "plugin": pdf_metadata.PLUGIN_KEY,
+                "kwargs": {"pdf_dir": download_dir, "filename_rule": filename_rule},
             })
     else:
         plugins["after_photo"] = [
             item for item in after_photo
-            if not (isinstance(item, dict) and item.get("plugin") == "img2pdf")
+            if not (isinstance(item, dict) and item.get("plugin") in PDF_PLUGIN_KEYS)
         ]
     return jmcomic.create_option_by_str(yaml.safe_dump(data, allow_unicode=True))
 

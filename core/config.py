@@ -20,7 +20,7 @@ CONF_HEADER = """# Jm2PDF 配置文件
 
 # 程序内兜底默认配置：磁盘配置缺失字段时以此补齐
 DEFAULT_CONF_TEXT = """
-version: 2.1.0
+version: 2.1.1
 app:
   download_dir: ./download
   to_pdf: true
@@ -48,10 +48,10 @@ option:
     base_dir: ./download
   plugins:
     after_photo:
-      - plugin: img2pdf
+      - plugin: jm2pdf_meta_pdf
         kwargs:
           pdf_dir: ./download
-          filename_rule: Pid
+          filename_rule: Pname
 """
 
 # 界面支持的取值

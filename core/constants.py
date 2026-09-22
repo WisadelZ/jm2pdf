@@ -13,7 +13,14 @@ or commercial use is strictly prohibited.
 """
 
 APP_NAME = "jm2pdf"
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.1.1"
+
+# 项目信息（帮助页展示用）
+APP_AUTHOR = "WisadelZ"
+PROJECT_URL = "https://github.com/WisadelZ/jm2pdf"
+ISSUES_URL = PROJECT_URL + "/issues"
+LICENSE_NAME = "CC BY-NC-ND 4.0"
+LICENSE_URL = "https://creativecommons.org/licenses/by-nc-nd/4.0/"
 
 # 默认窗口尺寸
 WINDOW_WIDTH = 660
@@ -29,6 +36,8 @@ COLOR_IDLE = "#666666"
 # 路由
 ROUTE_MAIN = "/"
 ROUTE_SETTINGS = "/settings"
+ROUTE_EXPLORER = "/explorer"
+ROUTE_HELP = "/help"
 
 # 界面字体：微软雅黑 UI（Windows 10/11 自带），保证中英文混排字重均匀
 UI_FONT_FAMILY = "Microsoft YaHei UI"

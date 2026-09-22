@@ -9,7 +9,7 @@ import os
 
 import flet as ft
 
-from core.constants import ROUTE_MAIN, ROUTE_SETTINGS
+from core.constants import ROUTE_EXPLORER, ROUTE_HELP, ROUTE_MAIN, ROUTE_SETTINGS
 from utils.helpers import clamp
 
 
@@ -48,12 +48,12 @@ class MainPage:
             on_submit=lambda e: app.search())
         self.btn_search = ft.Button(self.t("btn_search"), on_click=lambda e: app.search())
 
-        self.result_text = ft.Text(app.search_text, selectable=True, size=12)
+        self.result_text = ft.Text(spans=[], selectable=True, size=12)
         self.result_box = ft.Container(
             content=ft.ListView(controls=[self.result_text], padding=6, expand=True),
             border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT), border_radius=6,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
-            height=96, expand=True, padding=2)
+            height=112, expand=True, padding=2)
         self.btn_add = ft.Button(self.t("btn_add"), on_click=lambda e: app.add_searched())
 
         # ---- 操作行：PDF 开关 + 开始下载 + 状态 + 进度 ----
@@ -163,9 +163,13 @@ class MainPage:
 
         # 顶部工具栏：功能按钮自左向右排列，后续新增功能继续往右追加即可
         toolbar = ft.Row([
+            ft.OutlinedButton(self.t("btn_explorer"), icon=ft.Icons.FOLDER_OPEN,
+                              on_click=lambda e: app.navigate(ROUTE_EXPLORER)),
+            ft.OutlinedButton(self.t("btn_help"), icon=ft.Icons.HELP_OUTLINE,
+                              on_click=lambda e: app.navigate(ROUTE_HELP)),
             ft.OutlinedButton(self.t("btn_settings"), icon=ft.Icons.SETTINGS,
                               on_click=lambda e: app.navigate(ROUTE_SETTINGS)),
-        ], alignment=ft.MainAxisAlignment.START)
+        ], spacing=8, alignment=ft.MainAxisAlignment.START)
 
         # 工具栏自身保持紧凑，与表单之间仅留一段小间距，
         # 首个输入框所需的额外空间已放进 form_col 内部
@@ -192,8 +196,20 @@ class MainPage:
         self.progress.visible = app.running
         self.status_text.value = app.status_text_value
         self.status_text.color = app.status_color
-        self.result_text.value = app.search_text
+        self.result_text.spans = self._result_spans()
         app.update()
+
+    def _result_spans(self):
+        """搜索结果文本；搜索成功时在末尾附上可点击的网页链接。"""
+        app = self.app
+        spans = [ft.TextSpan(app.search_text)]
+        if app.searched_url:
+            spans.append(ft.TextSpan("\n%s " % self.t("search_link")))
+            spans.append(ft.TextSpan(
+                app.searched_url, url=app.searched_url,
+                style=ft.TextStyle(color=ft.Colors.PRIMARY,
+                                   decoration=ft.TextDecoration.UNDERLINE)))
+        return spans
 
     # ------------------------------------------------------------------
     # 输入收集

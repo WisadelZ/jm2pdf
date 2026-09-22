@@ -18,11 +18,13 @@ import yaml
 from core import config as conf_mod
 from core.config import THEME_MODES
 from core.constants import (APP_VERSION, COLOR_ERR, COLOR_IDLE, COLOR_OK,
-                            ROUTE_MAIN, ROUTE_SETTINGS, UI_FONT_FAMILY,
-                            WINDOW_HEIGHT, WINDOW_MIN_HEIGHT,
-                            WINDOW_MIN_WIDTH, WINDOW_WIDTH)
-from core.downloader import build_option, collect_pdfs, send_mail
+                            ROUTE_EXPLORER, ROUTE_HELP, ROUTE_MAIN,
+                            ROUTE_SETTINGS, UI_FONT_FAMILY, WINDOW_HEIGHT,
+                            WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH, WINDOW_WIDTH)
+from core.downloader import album_url, build_option, collect_pdfs, send_mail
 from core.logging_bridge import UiLogHandler
+from ui.explorer_page import ExplorerPage
+from ui.help_page import HelpPage
 from ui.main_page import MainPage
 from ui.settings_page import SettingsPage
 from utils.helpers import parse_ids
@@ -43,6 +45,7 @@ class AppUI:
         self.running = False
         self.searching = False
         self.searched_id = ""
+        self.searched_url = ""
         self.search_text = ""
         self.status_text_value = self.t("status_ready")
         self.status_color = COLOR_IDLE
@@ -119,9 +122,14 @@ class AppUI:
         """按当前路由重建视图树。语言切换、导入配置后都会调用。"""
         route = self.page.route or ROUTE_MAIN
         self.log_view = None
+        self.main_page = None
         self.page.views.clear()
         if route == ROUTE_SETTINGS:
             view = SettingsPage(self).build_view()
+        elif route == ROUTE_EXPLORER:
+            view = ExplorerPage(self).build_view()
+        elif route == ROUTE_HELP:
+            view = HelpPage(self).build_view()
         else:
             self.main_page = MainPage(self)
             view = self.main_page.build_view()
@@ -298,6 +306,7 @@ class AppUI:
             return
         self.searching = True
         self.searched_id = ""
+        self.searched_url = ""
         self.search_text = ""
         self.main_page.refresh()
         self.set_status(self.t("status_searching"))
@@ -328,11 +337,12 @@ class AppUI:
             template = "search_info_tags" if tags else "search_info"
             text = self.t(template, id=detail.id, pages=detail.page_count,
                           chapters=len(detail), title=detail.title, tags=tags)
-            ok, searched = True, str(detail.id)
+            ok, searched, url = True, str(detail.id), album_url(detail.id)
         except Exception as exc:
-            text, ok, searched = self.t("search_failed", error=exc), False, ""
+            text, ok, searched, url = self.t("search_failed", error=exc), False, "", ""
         self.searching = False
         self.searched_id = searched
+        self.searched_url = url
         self.search_text = text
         if self.main_page is not None:
             self.main_page.refresh()

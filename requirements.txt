@@ -2,4 +2,5 @@ jmcomic
 pyyaml
 pillow
 img2pdf
+pikepdf
 flet

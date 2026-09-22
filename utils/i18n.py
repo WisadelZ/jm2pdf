@@ -28,6 +28,8 @@ _STRINGS = {
         "window_title": "jm2pdf v{version} - 本子下载转 PDF",
 
         # 工具栏
+        "btn_explorer": "资源管理器",
+        "btn_help": "帮助",
         "btn_settings": "设置",
 
         # 主页 - 下载任务
@@ -69,6 +71,7 @@ _STRINGS = {
         "search_info_tags": "ID: {id}\n页数: {pages} / 章节: {chapters}\n名称: {title}\n标签: {tags}",
         "search_failed": "搜索失败：{error}",
         "search_result_log": "搜索结果：{text}",
+        "search_link": "网页链接",
 
         # 状态提示
         "status_ready": "就绪",
@@ -132,6 +135,53 @@ _STRINGS = {
         "status_imported": "配置导入成功",
         "status_import_canceled": "已取消导入",
         "status_import_failed": "配置导入失败：{error}",
+
+        # 资源管理器
+        "explorer_title": "资源管理器",
+        "explorer_dir": "目录：{path}",
+        "explorer_empty": "下载目录里还没有已下载的漫画",
+        "explorer_scan_failed": "扫描下载目录失败：{error}",
+        "explorer_type_folder": "图片文件夹",
+        "explorer_type_pdf": "PDF",
+        "btn_refresh": "刷新",
+        "btn_open_selected": "打开",
+        "btn_delete_selected": "删除",
+        "explorer_need_selection": "请先勾选要操作的漫画文件夹或 PDF",
+        "status_opened": "已打开 {name}",
+        "status_open_failed": "打开失败：{error}",
+        "delete_dialog_title": "确认删除",
+        "delete_dialog_body": "以下 {count} 项将被移入回收站（可从回收站恢复）：\n{items}",
+        "btn_cancel": "取消",
+        "btn_confirm_delete": "删除",
+        "status_deleted": "已删除 {count} 项，可在回收站中恢复",
+        "status_delete_failed": "删除失败：{error}",
+
+        # 资源管理器 - 元数据边栏
+        "panel_meta_title": "元数据",
+        "panel_meta_hint": "勾选左侧的 PDF 查看元数据\n（只有 PDF 在生成时写入了元数据）",
+        "panel_meta_none": "该 PDF 没有元数据，可能由旧版本生成",
+        "panel_meta_failed": "元数据读取失败：{error}",
+        "meta_title": "标题",
+        "meta_album_id": "本子 ID",
+        "meta_author": "作者",
+        "meta_tags": "标签",
+        "meta_pages": "页数",
+        "meta_chapter": "章节序号",
+
+        # 帮助页
+        "help_title": "帮助",
+        "help_version": "版本",
+        "help_author": "作者",
+        "help_project": "项目地址",
+        "help_license": "分发协议",
+        "help_disclaimer_title": "免责声明",
+        "help_disclaimer": "本工具仅供学习研究使用，请遵守网站的使用条款，尊重版权与创作者权益，"
+                           "请勿用于任何商业用途。\n"
+                           "程序按「现状」提供，作者不对使用本工具造成的任何后果负责。\n"
+                           "本项目采用 {license} 许可证：允许非商用分享，禁止商用，"
+                           "禁止修改后再分发。",
+        "help_issue_hint": "如遇问题或有功能建议，请前往 GitHub 项目主页提交 Issue：",
+        "help_issue_link": "提交 Issue",
     },
 
     # ------------------------------------------------------------------
@@ -140,6 +190,8 @@ _STRINGS = {
     LANG_ZH_TW: {
         "window_title": "jm2pdf v{version} - 本子下載轉 PDF",
 
+        "btn_explorer": "資源管理器",
+        "btn_help": "幫助",
         "btn_settings": "設定",
 
         "label_ids": "本子 ID",
@@ -175,6 +227,7 @@ _STRINGS = {
         "search_info_tags": "ID: {id}\n頁數: {pages} / 章節: {chapters}\n名稱: {title}\n標籤: {tags}",
         "search_failed": "搜尋失敗：{error}",
         "search_result_log": "搜尋結果：{text}",
+        "search_link": "網頁連結",
 
         "status_ready": "就緒",
         "status_search_need_id": "請先在搜尋框中輸入本子 ID",
@@ -234,6 +287,53 @@ _STRINGS = {
         "status_imported": "設定匯入成功",
         "status_import_canceled": "已取消匯入",
         "status_import_failed": "設定匯入失敗：{error}",
+
+        # 資源管理器
+        "explorer_title": "資源管理器",
+        "explorer_dir": "目錄：{path}",
+        "explorer_empty": "下載目錄裡還沒有已下載的漫畫",
+        "explorer_scan_failed": "掃描下載目錄失敗：{error}",
+        "explorer_type_folder": "圖片資料夾",
+        "explorer_type_pdf": "PDF",
+        "btn_refresh": "重新整理",
+        "btn_open_selected": "開啟",
+        "btn_delete_selected": "刪除",
+        "explorer_need_selection": "請先勾選要操作的漫畫資料夾或 PDF",
+        "status_opened": "已開啟 {name}",
+        "status_open_failed": "開啟失敗：{error}",
+        "delete_dialog_title": "確認刪除",
+        "delete_dialog_body": "以下 {count} 項將被移入資源回收筒（可從資源回收筒還原）：\n{items}",
+        "btn_cancel": "取消",
+        "btn_confirm_delete": "刪除",
+        "status_deleted": "已刪除 {count} 項，可從資源回收筒還原",
+        "status_delete_failed": "刪除失敗：{error}",
+
+        # 資源管理器 - 元資料邊欄
+        "panel_meta_title": "元資料",
+        "panel_meta_hint": "勾選左側的 PDF 檢視元資料\n（只有 PDF 在產生時寫入了元資料）",
+        "panel_meta_none": "該 PDF 沒有元資料，可能由舊版本產生",
+        "panel_meta_failed": "元資料讀取失敗：{error}",
+        "meta_title": "標題",
+        "meta_album_id": "本子 ID",
+        "meta_author": "作者",
+        "meta_tags": "標籤",
+        "meta_pages": "頁數",
+        "meta_chapter": "章節序號",
+
+        # 說明頁
+        "help_title": "說明",
+        "help_version": "版本",
+        "help_author": "作者",
+        "help_project": "專案位址",
+        "help_license": "分發條款",
+        "help_disclaimer_title": "免責聲明",
+        "help_disclaimer": "本工具僅供學習研究使用，請遵守網站的使用條款，尊重版權與創作者權益，"
+                           "請勿用於任何商業用途。\n"
+                           "程式按「現狀」提供，作者不對使用本工具造成的任何後果負責。\n"
+                           "本專案採用 {license} 授權條款：允許非商用分享，禁止商用，"
+                           "禁止修改後再散布。",
+        "help_issue_hint": "如遇問題或有功能建議，請前往 GitHub 專案主頁提交 Issue：",
+        "help_issue_link": "提交 Issue",
     },
 
     # ------------------------------------------------------------------
@@ -242,6 +342,8 @@ _STRINGS = {
     LANG_EN: {
         "window_title": "jm2pdf v{version} - Comic Downloader & PDF Merger",
 
+        "btn_explorer": "Explorer",
+        "btn_help": "Help",
         "btn_settings": "Settings",
 
         "label_ids": "Comic ID",
@@ -277,6 +379,7 @@ _STRINGS = {
         "search_info_tags": "ID: {id}\nPages: {pages} / Chapters: {chapters}\nTitle: {title}\nTags: {tags}",
         "search_failed": "Search failed: {error}",
         "search_result_log": "Search result: {text}",
+        "search_link": "Web page",
 
         "status_ready": "Ready",
         "status_search_need_id": "Enter a comic ID in the search box first",
@@ -336,6 +439,58 @@ _STRINGS = {
         "status_imported": "Configuration imported successfully",
         "status_import_canceled": "Import canceled",
         "status_import_failed": "Failed to import configuration: {error}",
+
+        # Explorer
+        "explorer_title": "Explorer",
+        "explorer_dir": "Directory: {path}",
+        "explorer_empty": "No downloaded comics in the download directory yet",
+        "explorer_scan_failed": "Failed to scan the download directory: {error}",
+        "explorer_type_folder": "Image folder",
+        "explorer_type_pdf": "PDF",
+        "btn_refresh": "Refresh",
+        "btn_open_selected": "Open",
+        "btn_delete_selected": "Delete",
+        "explorer_need_selection": "Select a comic folder or PDF first",
+        "status_opened": "Opened {name}",
+        "status_open_failed": "Failed to open: {error}",
+        "delete_dialog_title": "Confirm deletion",
+        "delete_dialog_body": "The following {count} item(s) will be moved to the Recycle Bin "
+                              "(recoverable):\n{items}",
+        "btn_cancel": "Cancel",
+        "btn_confirm_delete": "Delete",
+        "status_deleted": "Deleted {count} item(s), recoverable from the Recycle Bin",
+        "status_delete_failed": "Failed to delete: {error}",
+
+        # Explorer - metadata panel
+        "panel_meta_title": "Metadata",
+        "panel_meta_hint": "Tick a PDF on the left to view its metadata\n"
+                           "(only PDFs generated with metadata have it)",
+        "panel_meta_none": "This PDF has no metadata, probably generated by an older version",
+        "panel_meta_failed": "Failed to read metadata: {error}",
+        "meta_title": "Title",
+        "meta_album_id": "Comic ID",
+        "meta_author": "Author",
+        "meta_tags": "Tags",
+        "meta_pages": "Pages",
+        "meta_chapter": "Chapter No.",
+
+        # Help
+        "help_title": "Help",
+        "help_version": "Version",
+        "help_author": "Author",
+        "help_project": "Project",
+        "help_license": "License",
+        "help_disclaimer_title": "Disclaimer",
+        "help_disclaimer": "This tool is for learning and research only. Please follow the website's "
+                           "terms of use, respect copyright and the rights of creators, and do not use "
+                           "it for any commercial purpose.\n"
+                           "The program is provided \"as is\"; the author is not responsible for any "
+                           "consequence of using it.\n"
+                           "This project is licensed under {license}: non-commercial sharing is allowed, "
+                           "while commercial use and distribution of modified versions are prohibited.",
+        "help_issue_hint": "If you run into problems or have a feature request, "
+                           "please submit an issue on the GitHub project page:",
+        "help_issue_link": "Submit an issue",
     },
 }
 
