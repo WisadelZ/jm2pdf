@@ -9,7 +9,8 @@ import os
 
 import flet as ft
 
-from core.constants import ROUTE_EXPLORER, ROUTE_HELP, ROUTE_MAIN, ROUTE_SETTINGS
+from core.constants import (ROUTE_EXPLORE, ROUTE_EXPLORER, ROUTE_HELP, ROUTE_MAIN,
+                            ROUTE_SETTINGS)
 from utils.helpers import clamp
 
 # 搜索结果框右侧封面缩略图尺寸（3:4，与网站封面图比例一致）
@@ -175,6 +176,8 @@ class MainPage:
 
         # 顶部工具栏：功能按钮自左向右排列，后续新增功能继续往右追加即可
         toolbar = ft.Row([
+            ft.OutlinedButton(self.t("btn_explore"), icon=ft.Icons.EXPLORE,
+                              on_click=lambda e: app.navigate(ROUTE_EXPLORE)),
             ft.OutlinedButton(self.t("btn_explorer"), icon=ft.Icons.FOLDER_OPEN,
                               on_click=lambda e: app.navigate(ROUTE_EXPLORER)),
             ft.OutlinedButton(self.t("btn_help"), icon=ft.Icons.HELP_OUTLINE,

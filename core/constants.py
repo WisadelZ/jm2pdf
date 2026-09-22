@@ -13,7 +13,7 @@ or commercial use is strictly prohibited.
 """
 
 APP_NAME = "jm2pdf"
-APP_VERSION = "2.1.2"
+APP_VERSION = "2.2.0"
 
 # 项目信息（帮助页展示用）
 APP_AUTHOR = "WisadelZ"
@@ -38,6 +38,8 @@ ROUTE_MAIN = "/"
 ROUTE_SETTINGS = "/settings"
 ROUTE_EXPLORER = "/explorer"
 ROUTE_HELP = "/help"
+ROUTE_EXPLORE = "/explore"
+ROUTE_ALBUM = "/album"
 
 # 界面字体：微软雅黑 UI（Windows 10/11 自带），保证中英文混排字重均匀
 UI_FONT_FAMILY = "Microsoft YaHei UI"

@@ -28,6 +28,7 @@ _STRINGS = {
         "window_title": "jm2pdf v{version} - 本子下载转 PDF",
 
         # 工具栏
+        "btn_explore": "探索",
         "btn_explorer": "资源管理器",
         "btn_help": "帮助",
         "btn_settings": "设置",
@@ -183,6 +184,33 @@ _STRINGS = {
                            "禁止修改后再分发。",
         "help_issue_hint": "如遇问题或有功能建议，请前往 GitHub 项目主页提交 Issue：",
         "help_issue_link": "提交 Issue",
+
+        # 探索页
+        "explore_title": "探索",
+        "explore_hint": "输入关键词后点击搜索：每页 20 个结果，点击封面可放大，点击名称查看详情",
+        "explore_search_hint": "输入关键词，支持 +包含 / -排除",
+        "explore_mode_work": "作品",
+        "explore_mode_author": "作者",
+        "explore_mode_tag": "标签",
+        "explore_mode_actor": "角色",
+        "explore_no_result": "没有找到结果，换个关键词或搜索方式试试",
+        "explore_search_failed": "搜索失败：{error}",
+        "explore_page_info": "第 {page}/{pages} 页 · 共 {total} 条",
+        "btn_prev_page": "上一页",
+        "btn_next_page": "下一页",
+        "status_search_need_keyword": "请先输入搜索关键词",
+
+        # 本子详情页
+        "album_title": "本子详情",
+        "album_loading": "正在获取本子详情...",
+        "album_load_failed": "获取详情失败：{error}",
+        "meta_chapters": "章节数",
+        "btn_open_site": "跳转官网",
+        "btn_download_now": "直接下载",
+        "btn_add_to_queue": "加入下载列表",
+        "btn_close": "关闭",
+        "status_added_queue": "已加入下载列表：{ids}",
+        "status_task_running": "有任务正在进行，请等当前下载完成",
     },
 
     # ------------------------------------------------------------------
@@ -191,6 +219,7 @@ _STRINGS = {
     LANG_ZH_TW: {
         "window_title": "jm2pdf v{version} - 本子下載轉 PDF",
 
+        "btn_explore": "探索",
         "btn_explorer": "資源管理器",
         "btn_help": "幫助",
         "btn_settings": "設定",
@@ -336,6 +365,33 @@ _STRINGS = {
                            "禁止修改後再散布。",
         "help_issue_hint": "如遇問題或有功能建議，請前往 GitHub 專案主頁提交 Issue：",
         "help_issue_link": "提交 Issue",
+
+        # 探索頁
+        "explore_title": "探索",
+        "explore_hint": "輸入關鍵字後點擊搜尋：每頁 20 個結果，點擊封面可放大，點擊名稱查看詳情",
+        "explore_search_hint": "輸入關鍵字，支援 +包含 / -排除",
+        "explore_mode_work": "作品",
+        "explore_mode_author": "作者",
+        "explore_mode_tag": "標籤",
+        "explore_mode_actor": "角色",
+        "explore_no_result": "沒有找到結果，換個關鍵字或搜尋方式試試",
+        "explore_search_failed": "搜尋失敗：{error}",
+        "explore_page_info": "第 {page}/{pages} 頁 · 共 {total} 筆",
+        "btn_prev_page": "上一頁",
+        "btn_next_page": "下一頁",
+        "status_search_need_keyword": "請先輸入搜尋關鍵字",
+
+        # 本子詳情頁
+        "album_title": "本子詳情",
+        "album_loading": "正在取得本子詳情...",
+        "album_load_failed": "取得詳情失敗：{error}",
+        "meta_chapters": "章節數",
+        "btn_open_site": "前往官網",
+        "btn_download_now": "直接下載",
+        "btn_add_to_queue": "加入下載清單",
+        "btn_close": "關閉",
+        "status_added_queue": "已加入下載清單：{ids}",
+        "status_task_running": "有任務正在進行，請等目前下載完成",
     },
 
     # ------------------------------------------------------------------
@@ -344,6 +400,7 @@ _STRINGS = {
     LANG_EN: {
         "window_title": "jm2pdf v{version} - Comic Downloader & PDF Merger",
 
+        "btn_explore": "Explore",
         "btn_explorer": "Explorer",
         "btn_help": "Help",
         "btn_settings": "Settings",
@@ -494,6 +551,34 @@ _STRINGS = {
         "help_issue_hint": "If you run into problems or have a feature request, "
                            "please submit an issue on the GitHub project page:",
         "help_issue_link": "Submit an issue",
+
+        # Explore
+        "explore_title": "Explore",
+        "explore_hint": "Enter a keyword and search: 20 results per page, click a cover to "
+                        "enlarge it, click a name for details",
+        "explore_search_hint": "Keyword, supports +include / -exclude",
+        "explore_mode_work": "Work",
+        "explore_mode_author": "Author",
+        "explore_mode_tag": "Tag",
+        "explore_mode_actor": "Actor",
+        "explore_no_result": "No results, try another keyword or search mode",
+        "explore_search_failed": "Search failed: {error}",
+        "explore_page_info": "Page {page}/{pages} · {total} results",
+        "btn_prev_page": "Previous",
+        "btn_next_page": "Next",
+        "status_search_need_keyword": "Enter a search keyword first",
+
+        # Album details
+        "album_title": "Comic details",
+        "album_loading": "Loading comic details...",
+        "album_load_failed": "Failed to load details: {error}",
+        "meta_chapters": "Chapters",
+        "btn_open_site": "Open site",
+        "btn_download_now": "Download now",
+        "btn_add_to_queue": "Add to download list",
+        "btn_close": "Close",
+        "status_added_queue": "Added to the download list: {ids}",
+        "status_task_running": "A task is running, please wait for it to finish",
     },
 }
 

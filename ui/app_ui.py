@@ -18,12 +18,15 @@ import yaml
 from core import config as conf_mod
 from core.config import THEME_MODES
 from core.constants import (APP_VERSION, COLOR_ERR, COLOR_IDLE, COLOR_OK,
-                            ROUTE_EXPLORER, ROUTE_HELP, ROUTE_MAIN,
-                            ROUTE_SETTINGS, UI_FONT_FAMILY, WINDOW_HEIGHT,
-                            WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH, WINDOW_WIDTH)
+                            ROUTE_ALBUM, ROUTE_EXPLORE, ROUTE_EXPLORER, ROUTE_HELP,
+                            ROUTE_MAIN, ROUTE_SETTINGS, UI_FONT_FAMILY,
+                            WINDOW_HEIGHT, WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH,
+                            WINDOW_WIDTH)
 from core.downloader import (album_url, build_option, collect_pdfs, fetch_cover,
                              send_mail)
 from core.logging_bridge import UiLogHandler
+from ui.album_page import AlbumPage
+from ui.explore_page import ExplorePage
 from ui.explorer_page import ExplorerPage
 from ui.help_page import HelpPage
 from ui.main_page import MainPage
@@ -49,6 +52,8 @@ class AppUI:
         self.searched_url = ""
         self.searched_cover = None      # 封面图字节，只留在内存里，不落盘
         self.search_text = ""
+        self.detail_album_id = ""       # 探索页当前查看的本子 ID
+        self.explore_page = None        # 缓存探索页，从详情返回时保留搜索结果
         self.status_text_value = self.t("status_ready")
         self.status_color = COLOR_IDLE
         # 未落盘的界面输入，用于语言切换重建后还原
@@ -130,6 +135,12 @@ class AppUI:
             view = SettingsPage(self).build_view()
         elif route == ROUTE_EXPLORER:
             view = ExplorerPage(self).build_view()
+        elif route == ROUTE_EXPLORE:
+            if self.explore_page is None:
+                self.explore_page = ExplorePage(self)
+            view = self.explore_page.build_view()
+        elif route == ROUTE_ALBUM:
+            view = AlbumPage(self).build_view()
         elif route == ROUTE_HELP:
             view = HelpPage(self).build_view()
         else:
@@ -371,6 +382,28 @@ class AppUI:
         self.set_status(self.t("status_add_ok", id=self.searched_id), COLOR_OK)
 
     # ------------------------------------------------------------------
+    # 探索与本子详情
+    # ------------------------------------------------------------------
+    def open_album(self, album_id):
+        """打开本子详情页（探索页点击名称时调用）。"""
+        self.detail_album_id = str(album_id)
+        self.navigate(ROUTE_ALBUM)
+
+    def append_ids(self, ids):
+        """把 ID 加入主页的下载列表（返回真正新增的 ID 列表）。"""
+        current = parse_ids(self.pending_ids_text)
+        added = [str(album_id) for album_id in ids if str(album_id) not in current]
+        if not added:
+            self.set_status(self.t("status_add_exists", id=", ".join(str(i) for i in ids)))
+            return []
+        current.extend(added)
+        self.pending_ids_text = ", ".join(current)
+        if self.main_page is not None:
+            self.main_page.ids_field.value = self.pending_ids_text
+        self.set_status(self.t("status_added_queue", ids=", ".join(added)), COLOR_OK)
+        return added
+
+    # ------------------------------------------------------------------
     # 下载
     # ------------------------------------------------------------------
     def start(self):
@@ -380,6 +413,16 @@ class AppUI:
         if not ids:
             self.set_status(self.t("status_need_ids"), COLOR_ERR)
             return
+        self._begin_download(ids)
+
+    def download_ids(self, ids):
+        """直接下载指定 ID（探索页与本子详情页的「直接下载」）。"""
+        if self.running:
+            self.set_status(self.t("status_task_running"), COLOR_ERR)
+            return
+        self._begin_download([str(album_id) for album_id in ids])
+
+    def _begin_download(self, ids):
         self.sync_conf()
         conf = copy.deepcopy(self.conf)
         mail_conf = conf["mail"]
@@ -391,7 +434,8 @@ class AppUI:
         except OSError:
             pass
         self.running = True
-        self.main_page.refresh()
+        if self.main_page is not None:
+            self.main_page.refresh()
         self.set_status(self.t("status_downloading"))
         self.page.run_thread(self._run_task, ids, conf)
 
