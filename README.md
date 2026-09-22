@@ -101,7 +101,6 @@ jm2pdf/
 ├── LICENSE                     # CC BY-NC-ND 4.0 许可证
 ├── README.md                   # 项目说明
 ├── CHANGELOG.md                # 更新日志
-├── DEPLOYMENT.md               # 发布指南
 ├── .gitignore                  # Git 忽略规则
 ├── core/                       # 业务逻辑层（不依赖 Flet）
 │   ├── constants.py            # 全局常量与应用元信息

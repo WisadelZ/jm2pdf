@@ -51,3 +51,6 @@ temp/
 # Data files (if any)
 download/
 *.pdf
+
+# 个人发布参考，不进入仓库
+DEPLOYMENT.md
