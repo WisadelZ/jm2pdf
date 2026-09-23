@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
 """资源管理器页：按漫画归组管理下载目录里的 PDF 与图片文件夹。
 
-同一本漫画的 PDF 与图片文件夹用折叠菜单归在一起；勾选后可以打开或删除
+同一本漫画的 PDF 与图片文件夹用折叠菜单归在一起；勾选后可以打开、浏览或删除
 （删除为移入回收站）。勾选 PDF 时右侧边栏展示该 PDF 里的漫画元数据。
+
+只勾选一项时才能「打开」「浏览」；勾选多项时只保留「删除」。
+「浏览」在页面上叠一层阅读界面（背景模糊变暗），浏览文件夹时自动打开里面的图片。
 """
 
 import os
 
 import flet as ft
 
-from core import library, pdf_metadata
+from core import library, pdf_metadata, reader
 from core.config import resolve_path
 from core.constants import COLOR_ERR, ROUTE_EXPLORER, ROUTE_MAIN
+from ui.reader_view import ReaderView
 
 # 右侧边栏宽度（窗口默认 660，留给列表的宽度仍然充足）
 PANEL_WIDTH = 250
@@ -44,6 +48,14 @@ class ExplorerPage:
             width=PANEL_WIDTH, padding=12, border_radius=8,
             border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT))
 
+        # 只勾选一项时才可操作，初始没有任何勾选
+        self.btn_open = ft.Button(self.t("btn_open_selected"), icon=ft.Icons.OPEN_IN_NEW,
+                                  disabled=True, on_click=self._on_open)
+        self.btn_browse = ft.Button(self.t("btn_browse"), icon=ft.Icons.AUTO_STORIES,
+                                    disabled=True, on_click=self._on_browse)
+        self.btn_delete = ft.Button(self.t("btn_delete_selected"), icon=ft.Icons.DELETE_OUTLINE,
+                                    on_click=self._on_delete)
+
         left = ft.Column([
             ft.Row([self.path_text,
                     ft.Button(self.t("btn_refresh"), icon=ft.Icons.REFRESH,
@@ -51,17 +63,16 @@ class ExplorerPage:
             ft.Divider(height=1),
             ft.Container(content=self.list_view, expand=True, border_radius=6,
                          border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT)),
-            ft.Row([
-                ft.Button(self.t("btn_open_selected"), icon=ft.Icons.OPEN_IN_NEW,
-                          on_click=self._on_open),
-                ft.Button(self.t("btn_delete_selected"), icon=ft.Icons.DELETE_OUTLINE,
-                          on_click=self._on_delete),
-            ], spacing=10),
+            ft.Row([self.btn_open, self.btn_browse, self.btn_delete], spacing=10),
             self.status_text,
         ], expand=True, spacing=8)
 
-        content = ft.Row([left, self.panel_box], expand=True, spacing=12,
-                         vertical_alignment=ft.CrossAxisAlignment.STRETCH)
+        row = ft.Row([left, self.panel_box], expand=True, spacing=12,
+                     vertical_alignment=ft.CrossAxisAlignment.STRETCH)
+        # 内容整块模糊变暗由浏览层控制，因此包一层容器叠在浏览层下面
+        self.content_box = ft.Container(content=row, left=0, top=0, right=0, bottom=0)
+        self.browser = ReaderView(app, self.content_box)
+
         view = ft.View(
             route=ROUTE_EXPLORER,
             appbar=ft.AppBar(
@@ -69,9 +80,10 @@ class ExplorerPage:
                 leading=ft.IconButton(ft.Icons.ARROW_BACK,
                                       on_click=lambda e: app.navigate(ROUTE_MAIN)),
             ),
-            controls=[content],
+            controls=[ft.Stack([self.content_box, self.browser.build()], expand=True)],
             padding=12,
         )
+        self.browser.attach(view)
         app.bind_status(self.status_text)
         self.reload()
         return view
@@ -87,6 +99,7 @@ class ExplorerPage:
             self.app.set_status(self.t("explorer_scan_failed", error=exc), COLOR_ERR)
         self.list_view.controls = self._build_rows(entries)
         self._refresh_panel()
+        self._refresh_actions()
         self.app.update()
 
     def _build_rows(self, entries):
@@ -182,6 +195,14 @@ class ExplorerPage:
         elif not e.control.value and path == self.meta_pdf:
             self.meta_pdf = None
         self._refresh_panel()
+        self._refresh_actions()
+
+    def _refresh_actions(self):
+        """勾选多项时只保留「删除」，「打开」与「浏览」都不可点。"""
+        single = len(self._checked_paths()) == 1
+        self.btn_open.disabled = not single
+        self.btn_browse.disabled = not single
+        self.app.update()
 
     def _on_open(self, e):
         paths = self._checked_paths()
@@ -196,6 +217,18 @@ class ExplorerPage:
             return
         self.app.set_status(
             self.t("status_opened", name=", ".join(os.path.basename(p) for p in paths)))
+
+    def _on_browse(self, e):
+        """浏览选中的 PDF 或图片文件夹；空的图片文件夹只提示，不打开浏览层。"""
+        paths = self._checked_paths()
+        if len(paths) != 1:
+            self.app.set_status(self.t("explorer_need_selection"), COLOR_ERR)
+            return
+        path = paths[0]
+        if os.path.isdir(path) and not reader.list_images(path):
+            self.app.set_status(self.t("explorer_no_images"), COLOR_ERR)
+            return
+        self.browser.open(path)
 
     def _on_delete(self, e):
         paths = self._checked_paths()

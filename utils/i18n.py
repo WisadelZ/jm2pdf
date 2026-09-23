@@ -25,7 +25,8 @@ _STRINGS = {
     # 简体中文
     # ------------------------------------------------------------------
     LANG_ZH_CN: {
-        "window_title": "jm2pdf v{version} - 本子下载转 PDF",
+        # 窗口标题：程序名 + 版本号 + 作者署名（与语言无关，三语保持一致）
+        "window_title": "jm2pdf v{version} - by WisadelZ",
 
         # 工具栏
         "btn_download": "下载",
@@ -148,8 +149,15 @@ _STRINGS = {
         "explorer_type_pdf": "PDF",
         "btn_refresh": "刷新",
         "btn_open_selected": "打开",
+        "btn_browse": "浏览",
         "btn_delete_selected": "删除",
         "explorer_need_selection": "请先勾选要操作的漫画文件夹或 PDF",
+        "explorer_no_images": "文件夹内无图片",
+        "browse_failed": "无法浏览：{error}",
+        "browse_render_failed": "该页无法显示",
+        "browse_switch_vertical": "切换为竖式浏览",
+        "browse_switch_horizontal": "切换为横式浏览",
+        "status_browsing": "正在浏览 {name}",
         "status_opened": "已打开 {name}",
         "status_open_failed": "打开失败：{error}",
         "delete_dialog_title": "确认删除",
@@ -190,7 +198,8 @@ _STRINGS = {
         "help_issue_link": "提交 Issue",
 
         # 探索页（首页）
-        "explore_hint": "输入关键词后点击搜索：每页 20 个结果，点击封面可放大，点击名称查看详情",
+        "home_welcome": "今天想看点什么？",
+        "explore_hint": "输入关键词后点击搜索：点击封面可放大，点击名称查看详情",
         "explore_search_hint": "输入关键词，支持 +包含 / -排除",
         "explore_mode_all": "全部",
         "explore_mode_work": "作品",
@@ -221,6 +230,10 @@ _STRINGS = {
         "btn_open_site": "跳转官网",
         "btn_download_now": "直接下载",
         "btn_add_to_queue": "加入下载列表",
+        "preview_loading": "正在获取预览图片…",
+        "preview_failed": "预览获取失败：{error}",
+        "status_browse_opening": "正在打开浏览…",
+        "browse_open_failed": "打开浏览失败：{error}",
         "btn_close": "关闭",
         "status_added_queue": "已加入下载列表：{ids}",
         "status_task_running": "有任务正在进行，请等当前下载完成",
@@ -230,7 +243,8 @@ _STRINGS = {
     # 繁体中文
     # ------------------------------------------------------------------
     LANG_ZH_TW: {
-        "window_title": "jm2pdf v{version} - 本子下載轉 PDF",
+        # 視窗標題：程式名 + 版本號 + 作者署名（與語言無關，三語保持一致）
+        "window_title": "jm2pdf v{version} - by WisadelZ",
 
         "btn_download": "下載",
         "btn_explore": "探索",
@@ -342,8 +356,15 @@ _STRINGS = {
         "explorer_type_pdf": "PDF",
         "btn_refresh": "重新整理",
         "btn_open_selected": "開啟",
+        "btn_browse": "瀏覽",
         "btn_delete_selected": "刪除",
         "explorer_need_selection": "請先勾選要操作的漫畫資料夾或 PDF",
+        "explorer_no_images": "資料夾內沒有圖片",
+        "browse_failed": "無法瀏覽：{error}",
+        "browse_render_failed": "該頁無法顯示",
+        "browse_switch_vertical": "切換為豎式瀏覽",
+        "browse_switch_horizontal": "切換為橫式瀏覽",
+        "status_browsing": "正在瀏覽 {name}",
         "status_opened": "已開啟 {name}",
         "status_open_failed": "開啟失敗：{error}",
         "delete_dialog_title": "確認刪除",
@@ -384,7 +405,8 @@ _STRINGS = {
         "help_issue_link": "提交 Issue",
 
         # 探索頁（首頁）
-        "explore_hint": "輸入關鍵字後點擊搜尋：每頁 20 個結果，點擊封面可放大，點擊名稱查看詳情",
+        "home_welcome": "今天想看點什麼？",
+        "explore_hint": "輸入關鍵字後點擊搜尋：點擊封面可放大，點擊名稱查看詳情",
         "explore_search_hint": "輸入關鍵字，支援 +包含 / -排除",
         "explore_mode_all": "全部",
         "explore_mode_work": "作品",
@@ -415,6 +437,10 @@ _STRINGS = {
         "btn_open_site": "前往官網",
         "btn_download_now": "直接下載",
         "btn_add_to_queue": "加入下載清單",
+        "preview_loading": "正在取得預覽圖片…",
+        "preview_failed": "預覽取得失敗：{error}",
+        "status_browse_opening": "正在開啟瀏覽…",
+        "browse_open_failed": "開啟瀏覽失敗：{error}",
         "btn_close": "關閉",
         "status_added_queue": "已加入下載清單：{ids}",
         "status_task_running": "有任務正在進行，請等目前下載完成",
@@ -424,7 +450,8 @@ _STRINGS = {
     # English
     # ------------------------------------------------------------------
     LANG_EN: {
-        "window_title": "jm2pdf v{version} - Comic Downloader & PDF Merger",
+        # Window title: app name + version + author (same in every language)
+        "window_title": "jm2pdf v{version} - by WisadelZ",
 
         "btn_download": "Download",
         "btn_explore": "Explore",
@@ -536,8 +563,15 @@ _STRINGS = {
         "explorer_type_pdf": "PDF",
         "btn_refresh": "Refresh",
         "btn_open_selected": "Open",
+        "btn_browse": "Browse",
         "btn_delete_selected": "Delete",
         "explorer_need_selection": "Select a comic folder or PDF first",
+        "explorer_no_images": "No images in this folder",
+        "browse_failed": "Cannot browse: {error}",
+        "browse_render_failed": "This page cannot be displayed",
+        "browse_switch_vertical": "Switch to vertical view",
+        "browse_switch_horizontal": "Switch to horizontal view",
+        "status_browsing": "Browsing {name}",
         "status_opened": "Opened {name}",
         "status_open_failed": "Failed to open: {error}",
         "delete_dialog_title": "Confirm deletion",
@@ -583,8 +617,9 @@ _STRINGS = {
         "help_issue_link": "Submit an issue",
 
         # Explore (home page)
-        "explore_hint": "Enter a keyword and search: 20 results per page, click a cover to "
-                        "enlarge it, click a name for details",
+        "home_welcome": "What would you like to read today?",
+        "explore_hint": "Enter a keyword and search: click a cover to enlarge it, "
+                        "click a name for details",
         "explore_search_hint": "Keyword, supports +include / -exclude",
         "explore_mode_all": "All",
         "explore_mode_work": "Work",
@@ -615,6 +650,10 @@ _STRINGS = {
         "btn_open_site": "Open site",
         "btn_download_now": "Download now",
         "btn_add_to_queue": "Add to download list",
+        "preview_loading": "Loading preview images...",
+        "preview_failed": "Failed to load the preview: {error}",
+        "status_browse_opening": "Opening the reader...",
+        "browse_open_failed": "Failed to open the reader: {error}",
         "btn_close": "Close",
         "status_added_queue": "Added to the download list: {ids}",
         "status_task_running": "A task is running, please wait for it to finish",

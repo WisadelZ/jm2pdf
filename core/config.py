@@ -20,7 +20,7 @@ CONF_HEADER = """# Jm2PDF 配置文件
 
 # 程序内兜底默认配置：磁盘配置缺失字段时以此补齐
 DEFAULT_CONF_TEXT = """
-version: 2.3.0
+version: 2.3.1
 app:
   download_dir: ./download
   to_pdf: true

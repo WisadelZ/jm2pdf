@@ -2,6 +2,7 @@
 """下载层：把界面配置翻译成 jmcomic 选项，并处理下载产物与邮件推送。"""
 
 import copy
+import io
 import os
 import re
 import smtplib
@@ -9,6 +10,7 @@ import urllib.request
 
 import jmcomic
 import yaml
+from PIL import Image
 
 from core import pdf_metadata
 from core.config import resolve_path
@@ -28,6 +30,12 @@ COVER_SIZE = "_3x4"
 
 # 图片 CDN 会拒绝空 User-Agent（返回 403），取图时显式带一个
 COVER_HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+# 详情页「预览前 5 页」最多取几张
+PREVIEW_LIMIT = 5
+
+# 预览图重新编码时的 JPEG 质量（站点图片本身是打乱的，必须重排后重编码）
+PREVIEW_QUALITY = 92
 
 
 def album_url(album_id, domain=SITE_DOMAIN):
@@ -49,6 +57,73 @@ def fetch_cover(album_id, size=COVER_SIZE):
             return resp.read() or None
     except Exception:      # 封面只是搜索结果的点缀，任何异常都不应影响搜索本身
         return None
+
+
+def fetch_preview_images(conf, album_id, limit=PREVIEW_LIMIT):
+    """取本子第一话的前几页图片，供详情页预览。
+
+    返回 ``[{"data": 图片字节, "size": (宽, 高)}, ...]``；站点上的图片是打乱存放的，
+    这里按 jmcomic 的分条规则还原（未打乱的直接用原始字节），全程只在内存中处理。
+    单页取不到就跳过，一页都没取到时抛出异常，由调用方提示。
+    """
+    client = build_option(conf).new_jm_client()
+    photo = client.get_album_detail(album_id)[0]
+    client.check_photo(photo)              # 补全图片 URL 等信息
+    pages = []
+    error = None
+    for index in range(min(limit, len(photo))):
+        try:
+            pages.append(fetch_page_image(client, photo.getindex(index)))
+        except Exception as exc:           # 个别页失败不影响其余几页
+            error = exc
+    if not pages:
+        raise error if error is not None else ValueError("没有取到预览图片")
+    return pages
+
+
+def fetch_page_image(client, detail):
+    """取一页图片并解密，返回 ``{"data": 字节, "size": (宽, 高)}``。
+
+    供详情页预览与在线浏览共用；只在内存中处理，不落盘。
+    """
+    content = client.get_jm_image(detail.download_url).content
+    if not content:
+        raise ValueError("图片响应为空")
+    num = jmcomic.JmImageTool.get_num_by_url(detail.scramble_id, detail.img_url)
+    if num == 0:
+        # 未打乱的图：原始字节就能直接显示，不必重新编码
+        return {"data": content, "size": _image_size(content)}
+    image = _decode_image(content, num)
+    buffer = io.BytesIO()
+    image.save(buffer, "JPEG", quality=PREVIEW_QUALITY)
+    return {"data": buffer.getvalue(), "size": image.size}
+
+
+def _decode_image(content, num):
+    """按 jmcomic 的分条规则把打乱的图片还原（与 JmImageTool.decode_and_save 一致）。"""
+    source = jmcomic.JmImageTool.open_image(content)
+    width, height = source.size
+    target = Image.new("RGB", (width, height))
+    over = height % num
+    for i in range(num):
+        move = height // num
+        y_src = height - (move * (i + 1)) - over
+        y_dst = move * i
+        if i == 0:
+            move += over
+        else:
+            y_dst += over
+        target.paste(source.crop((0, y_src, width, y_src + move)),
+                     (0, y_dst, width, y_dst + move))
+    return target
+
+
+def _image_size(content):
+    """读出图片像素尺寸；读不出来时给一个竖版的兜底尺寸。"""
+    try:
+        return jmcomic.JmImageTool.open_image(content).size
+    except Exception:
+        return (1000, 1400)
 
 
 def pdf_filename_rule(dir_rule_dsl):

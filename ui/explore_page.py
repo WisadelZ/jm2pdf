@@ -62,10 +62,10 @@ DATE_DIALOG_HEIGHT = 192
 # 放大预览时背景的虚化强度
 PREVIEW_BLUR = 6
 
-# 首页欢迎语：先用于占位的测试文案与字号（稍大于正文）。
-# 换成正式文案时按项目惯例迁入 utils/i18n.py 的三语文本表。
-WELCOME_PLACEHOLDER = "测试测试测试测试测试"
-WELCOME_FONT_SIZE = 22
+# 首页欢迎语：居中态显示在搜索框上方，字号略大于正文
+WELCOME_FONT_SIZE = 25
+# 欢迎语与下方搜索框之间额外留出的间距（外层 Column 本身还有一个间距）
+WELCOME_GAP = 10
 
 
 class ExplorePage:
@@ -134,8 +134,11 @@ class ExplorePage:
         # 顶栏菜单：首位是下载页入口（原下载页「探索」按钮所在的位置）
         self.toolbar = ft.Column([self._build_toolbar(), ft.Divider(height=1)], spacing=8)
         # 欢迎语、搜索框、指引与状态各自包一层居中 Row，居中态下水平对齐由它保证
-        self.welcome_text = ft.Text(WELCOME_PLACEHOLDER, size=WELCOME_FONT_SIZE)
-        self.welcome_wrap = self._centered(self.welcome_text)
+        self.welcome_text = ft.Text(self.t("home_welcome"), size=WELCOME_FONT_SIZE)
+        # 底部留出额外间距，让欢迎语与搜索框之间不那么挤
+        self.welcome_wrap = self._centered(
+            ft.Container(content=self.welcome_text,
+                         padding=ft.Padding.only(bottom=WELCOME_GAP)))
         # 返回按钮独占一行靠左上，这样搜索框那一行仍是纯居中、不会被按钮挤偏
         self.btn_back = ft.IconButton(ft.Icons.ARROW_BACK, tooltip=self.t("btn_back"),
                                       visible=False, on_click=lambda e: self.reset_search())
