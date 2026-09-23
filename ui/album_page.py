@@ -7,11 +7,34 @@
 import flet as ft
 
 from core import explore
-from core.constants import COLOR_ERR, ROUTE_ALBUM, ROUTE_EXPLORE
+from core.constants import COLOR_ERR, ROUTE_ALBUM, ROUTE_MAIN
 from core.downloader import album_url, fetch_cover
 
 COVER_WIDTH = 220
 COVER_HEIGHT = 293
+
+# 并排两项（点赞数/观看数、页数/章节数）的排版：左项固定宽度，
+# 两行右项的起始位置就一致（观看数与章节数上下对齐）；PAIR_GAP 是两列之间的固定间距
+PAIR_LEFT_WIDTH = 88
+PAIR_GAP = 72
+
+# 观看数 / 点赞数在站点上可能是纯数字串，也可能是 "1K" / "1.2M" 这类缩写，
+# 这里统一格式化成带千位分隔符的纯数字；解析不出来就返回空串（界面显示占位符）
+_COUNT_UNITS = {"k": 1000, "m": 1000000}
+
+
+def _count_text(value):
+    """把观看数 / 点赞数格式化成 "200,000" 这样的纯数字文本。"""
+    text = str(value or "").strip().replace(",", "").replace(" ", "")
+    if text.isdigit():
+        return format(int(text), ",")
+    unit = text[-1:].lower()
+    if len(text) > 1 and unit in _COUNT_UNITS:
+        try:
+            return format(int(float(text[:-1]) * _COUNT_UNITS[unit]), ",")
+        except ValueError:
+            return ""
+    return ""
 
 
 class AlbumPage:
@@ -57,7 +80,7 @@ class AlbumPage:
             appbar=ft.AppBar(
                 title=ft.Text(self.t("album_title")),
                 leading=ft.IconButton(ft.Icons.ARROW_BACK,
-                                      on_click=lambda e: app.navigate(ROUTE_EXPLORE)),
+                                      on_click=lambda e: app.navigate(ROUTE_MAIN)),
             ),
             controls=[content],
             padding=12,
@@ -77,6 +100,19 @@ class AlbumPage:
             ft.Text(value or "—", size=12, selectable=True),
         ], spacing=2)
 
+    def _row_pair(self, left, right):
+        """两个「标签 + 数值」并排一行。
+
+        左项宽度固定，因此两行（点赞数/观看数、页数/章节数）的第二列
+        起始位置相同，观看数与章节数在竖直方向对齐；
+        用于这两组后信息区更矮，高度更贴近左侧的大封面。
+        """
+        return ft.Row([
+            ft.Container(content=self._row(self.t(left[0]), left[1]),
+                         width=PAIR_LEFT_WIDTH, alignment=ft.Alignment.TOP_LEFT),
+            self._row(self.t(right[0]), right[1]),
+        ], spacing=PAIR_GAP, vertical_alignment=ft.CrossAxisAlignment.START)
+
     # ------------------------------------------------------------------
     # 取详情
     # ------------------------------------------------------------------
@@ -89,15 +125,17 @@ class AlbumPage:
                 self.cover_holder.content = ft.Image(
                     src=cover, width=COVER_WIDTH, height=COVER_HEIGHT,
                     fit=ft.BoxFit.COVER, border_radius=6)
-            rows = (
-                ("meta_title", album.name),
-                ("meta_album_id", str(album.album_id)),
-                ("meta_author", ", ".join(album.authors or [])),
-                ("meta_tags", ", ".join(str(tag) for tag in (album.tags or []))),
-                ("meta_pages", str(album.page_count)),
-                ("meta_chapters", str(len(album))),
-            )
-            self.info_col.controls = [self._row(self.t(key), value) for key, value in rows]
+            # 点赞数与观看数并排、页数与章节数并排：信息区更矮，贴近左侧大封面
+            self.info_col.controls = [
+                self._row(self.t("meta_title"), album.name),
+                self._row(self.t("meta_album_id"), str(album.album_id)),
+                self._row(self.t("meta_author"), ", ".join(album.authors or [])),
+                self._row(self.t("meta_tags"), ", ".join(str(tag) for tag in (album.tags or []))),
+                self._row_pair(("meta_likes", _count_text(album.likes)),
+                               ("meta_views", _count_text(album.views))),
+                self._row_pair(("meta_pages", str(album.page_count)),
+                               ("meta_chapters", str(len(album)))),
+            ]
         except Exception as exc:
             self.info_col.controls = [ft.Text(self.t("album_load_failed", error=exc),
                                               size=12, color=COLOR_ERR, selectable=True)]

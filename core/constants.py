@@ -13,7 +13,7 @@ or commercial use is strictly prohibited.
 """
 
 APP_NAME = "jm2pdf"
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 
 # 项目信息（帮助页展示用）
 APP_AUTHOR = "WisadelZ"
@@ -33,12 +33,12 @@ COLOR_OK = "#27ae60"
 COLOR_ERR = "#c0392b"
 COLOR_IDLE = "#666666"
 
-# 路由
+# 路由：首页固定为探索页，下载页作为二级页由首页顶栏的「下载」按钮进入
 ROUTE_MAIN = "/"
+ROUTE_DOWNLOAD = "/download"
 ROUTE_SETTINGS = "/settings"
 ROUTE_EXPLORER = "/explorer"
 ROUTE_HELP = "/help"
-ROUTE_EXPLORE = "/explore"
 ROUTE_ALBUM = "/album"
 
 # 界面字体：微软雅黑 UI（Windows 10/11 自带），保证中英文混排字重均匀

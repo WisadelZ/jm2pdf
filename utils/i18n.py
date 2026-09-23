@@ -28,6 +28,7 @@ _STRINGS = {
         "window_title": "jm2pdf v{version} - 本子下载转 PDF",
 
         # 工具栏
+        "btn_download": "下载",
         "btn_explore": "探索",
         "btn_explorer": "资源管理器",
         "btn_help": "帮助",
@@ -154,6 +155,7 @@ _STRINGS = {
         "delete_dialog_title": "确认删除",
         "delete_dialog_body": "以下 {count} 项将被移入回收站（可从回收站恢复）：\n{items}",
         "btn_cancel": "取消",
+        "btn_confirm": "确认",
         "btn_confirm_delete": "删除",
         "status_deleted": "已删除 {count} 项，可在回收站中恢复",
         "status_delete_failed": "删除失败：{error}",
@@ -167,6 +169,8 @@ _STRINGS = {
         "meta_album_id": "本子 ID",
         "meta_author": "作者",
         "meta_tags": "标签",
+        "meta_likes": "点赞数",
+        "meta_views": "观看数",
         "meta_pages": "页数",
         "meta_chapter": "章节序号",
 
@@ -185,14 +189,23 @@ _STRINGS = {
         "help_issue_hint": "如遇问题或有功能建议，请前往 GitHub 项目主页提交 Issue：",
         "help_issue_link": "提交 Issue",
 
-        # 探索页
-        "explore_title": "探索",
+        # 探索页（首页）
         "explore_hint": "输入关键词后点击搜索：每页 20 个结果，点击封面可放大，点击名称查看详情",
         "explore_search_hint": "输入关键词，支持 +包含 / -排除",
+        "explore_mode_all": "全部",
         "explore_mode_work": "作品",
         "explore_mode_author": "作者",
         "explore_mode_tag": "标签",
         "explore_mode_actor": "角色",
+        "explore_sort_latest": "最新",
+        "explore_sort_views": "观看数",
+        "explore_sort_pictures": "图片数",
+        "explore_sort_likes": "点赞数",
+        "explore_sort_date": "按日期筛选",
+        "explore_time_today": "今天",
+        "explore_time_week": "本周",
+        "explore_time_month": "本月",
+        "explore_time_all": "全部",
         "explore_no_result": "没有找到结果，换个关键词或搜索方式试试",
         "explore_search_failed": "搜索失败：{error}",
         "explore_page_info": "第 {page}/{pages} 页 · 共 {total} 条",
@@ -219,6 +232,7 @@ _STRINGS = {
     LANG_ZH_TW: {
         "window_title": "jm2pdf v{version} - 本子下載轉 PDF",
 
+        "btn_download": "下載",
         "btn_explore": "探索",
         "btn_explorer": "資源管理器",
         "btn_help": "幫助",
@@ -335,6 +349,7 @@ _STRINGS = {
         "delete_dialog_title": "確認刪除",
         "delete_dialog_body": "以下 {count} 項將被移入資源回收筒（可從資源回收筒還原）：\n{items}",
         "btn_cancel": "取消",
+        "btn_confirm": "確認",
         "btn_confirm_delete": "刪除",
         "status_deleted": "已刪除 {count} 項，可從資源回收筒還原",
         "status_delete_failed": "刪除失敗：{error}",
@@ -348,6 +363,8 @@ _STRINGS = {
         "meta_album_id": "本子 ID",
         "meta_author": "作者",
         "meta_tags": "標籤",
+        "meta_likes": "點讚數",
+        "meta_views": "觀看數",
         "meta_pages": "頁數",
         "meta_chapter": "章節序號",
 
@@ -366,14 +383,23 @@ _STRINGS = {
         "help_issue_hint": "如遇問題或有功能建議，請前往 GitHub 專案主頁提交 Issue：",
         "help_issue_link": "提交 Issue",
 
-        # 探索頁
-        "explore_title": "探索",
+        # 探索頁（首頁）
         "explore_hint": "輸入關鍵字後點擊搜尋：每頁 20 個結果，點擊封面可放大，點擊名稱查看詳情",
         "explore_search_hint": "輸入關鍵字，支援 +包含 / -排除",
+        "explore_mode_all": "全部",
         "explore_mode_work": "作品",
         "explore_mode_author": "作者",
         "explore_mode_tag": "標籤",
         "explore_mode_actor": "角色",
+        "explore_sort_latest": "最新",
+        "explore_sort_views": "觀看數",
+        "explore_sort_pictures": "圖片數",
+        "explore_sort_likes": "點讚數",
+        "explore_sort_date": "依日期篩選",
+        "explore_time_today": "今天",
+        "explore_time_week": "本週",
+        "explore_time_month": "本月",
+        "explore_time_all": "全部",
         "explore_no_result": "沒有找到結果，換個關鍵字或搜尋方式試試",
         "explore_search_failed": "搜尋失敗：{error}",
         "explore_page_info": "第 {page}/{pages} 頁 · 共 {total} 筆",
@@ -400,6 +426,7 @@ _STRINGS = {
     LANG_EN: {
         "window_title": "jm2pdf v{version} - Comic Downloader & PDF Merger",
 
+        "btn_download": "Download",
         "btn_explore": "Explore",
         "btn_explorer": "Explorer",
         "btn_help": "Help",
@@ -517,6 +544,7 @@ _STRINGS = {
         "delete_dialog_body": "The following {count} item(s) will be moved to the Recycle Bin "
                               "(recoverable):\n{items}",
         "btn_cancel": "Cancel",
+        "btn_confirm": "Confirm",
         "btn_confirm_delete": "Delete",
         "status_deleted": "Deleted {count} item(s), recoverable from the Recycle Bin",
         "status_delete_failed": "Failed to delete: {error}",
@@ -531,6 +559,8 @@ _STRINGS = {
         "meta_album_id": "Comic ID",
         "meta_author": "Author",
         "meta_tags": "Tags",
+        "meta_likes": "Likes",
+        "meta_views": "Views",
         "meta_pages": "Pages",
         "meta_chapter": "Chapter No.",
 
@@ -552,15 +582,24 @@ _STRINGS = {
                            "please submit an issue on the GitHub project page:",
         "help_issue_link": "Submit an issue",
 
-        # Explore
-        "explore_title": "Explore",
+        # Explore (home page)
         "explore_hint": "Enter a keyword and search: 20 results per page, click a cover to "
                         "enlarge it, click a name for details",
         "explore_search_hint": "Keyword, supports +include / -exclude",
+        "explore_mode_all": "All",
         "explore_mode_work": "Work",
         "explore_mode_author": "Author",
         "explore_mode_tag": "Tag",
         "explore_mode_actor": "Actor",
+        "explore_sort_latest": "Latest",
+        "explore_sort_views": "Views",
+        "explore_sort_pictures": "Images",
+        "explore_sort_likes": "Likes",
+        "explore_sort_date": "Filter by date",
+        "explore_time_today": "Today",
+        "explore_time_week": "This week",
+        "explore_time_month": "This month",
+        "explore_time_all": "All",
         "explore_no_result": "No results, try another keyword or search mode",
         "explore_search_failed": "Search failed: {error}",
         "explore_page_info": "Page {page}/{pages} · {total} results",

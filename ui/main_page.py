@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
-"""主页视图：下载任务输入、搜索、下载选项、邮件推送与日志区。
+"""下载页视图：下载任务输入、搜索、下载选项、邮件推送与日志区。
 
-本类只负责界面呈现与输入收集，搜索 / 下载 / 配置保存等业务逻辑
-统一由 :class:`jm2pdf.ui.app_ui.AppUI` 处理。
+首页（探索页）顶栏的「下载」按钮进入本页；本页只负责界面呈现与输入收集，
+搜索 / 下载 / 配置保存等业务逻辑统一由 :class:`jm2pdf.ui.app_ui.AppUI` 处理。
 """
 
 import os
 
 import flet as ft
 
-from core.constants import (ROUTE_EXPLORE, ROUTE_EXPLORER, ROUTE_HELP, ROUTE_MAIN,
-                            ROUTE_SETTINGS)
+from core.constants import ROUTE_DOWNLOAD, ROUTE_MAIN
 from utils.helpers import clamp
 
 # 搜索结果框右侧封面缩略图尺寸（3:4，与网站封面图比例一致）
@@ -174,28 +173,20 @@ class MainPage:
             self.mail_tile,
         ], scroll=ft.ScrollMode.AUTO, spacing=18, expand=True)
 
-        # 顶部工具栏：功能按钮自左向右排列，后续新增功能继续往右追加即可
-        toolbar = ft.Row([
-            ft.OutlinedButton(self.t("btn_explore"), icon=ft.Icons.EXPLORE,
-                              on_click=lambda e: app.navigate(ROUTE_EXPLORE)),
-            ft.OutlinedButton(self.t("btn_explorer"), icon=ft.Icons.FOLDER_OPEN,
-                              on_click=lambda e: app.navigate(ROUTE_EXPLORER)),
-            ft.OutlinedButton(self.t("btn_help"), icon=ft.Icons.HELP_OUTLINE,
-                              on_click=lambda e: app.navigate(ROUTE_HELP)),
-            ft.OutlinedButton(self.t("btn_settings"), icon=ft.Icons.SETTINGS,
-                              on_click=lambda e: app.navigate(ROUTE_SETTINGS)),
-        ], spacing=8, alignment=ft.MainAxisAlignment.START)
+        # 下载页与资源管理器 / 帮助 / 设置页一样依附于首页：
+        # 左上角是返回首页（探索页）的按钮，因此不再放工具栏
+        content = ft.Column([form_col, self.log_box], expand=True, spacing=8)
 
-        # 工具栏自身保持紧凑，与表单之间仅留一段小间距，
-        # 首个输入框所需的额外空间已放进 form_col 内部
-        content = ft.Column([
-            toolbar,
-            ft.Divider(height=1),
-            form_col,
-            self.log_box,
-        ], expand=True, spacing=8)
-
-        view = ft.View(route=ROUTE_MAIN, controls=[content], padding=12)
+        view = ft.View(
+            route=ROUTE_DOWNLOAD,
+            appbar=ft.AppBar(
+                title=ft.Text(self.t("btn_download")),
+                leading=ft.IconButton(ft.Icons.ARROW_BACK,
+                                      on_click=lambda e: app.navigate(ROUTE_MAIN)),
+            ),
+            controls=[content],
+            padding=12,
+        )
 
         app.bind_status(self.status_text)
         app.bind_log_view(self.log_list)

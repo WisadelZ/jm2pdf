@@ -18,7 +18,7 @@ import yaml
 from core import config as conf_mod
 from core.config import THEME_MODES
 from core.constants import (APP_VERSION, COLOR_ERR, COLOR_IDLE, COLOR_OK,
-                            ROUTE_ALBUM, ROUTE_EXPLORE, ROUTE_EXPLORER, ROUTE_HELP,
+                            ROUTE_ALBUM, ROUTE_DOWNLOAD, ROUTE_EXPLORER, ROUTE_HELP,
                             ROUTE_MAIN, ROUTE_SETTINGS, UI_FONT_FAMILY,
                             WINDOW_HEIGHT, WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH,
                             WINDOW_WIDTH)
@@ -126,7 +126,10 @@ class AppUI:
     # 视图构建与状态绑定
     # ------------------------------------------------------------------
     def build(self):
-        """按当前路由重建视图树。语言切换、导入配置后都会调用。"""
+        """按当前路由重建视图树。语言切换、导入配置后都会调用。
+
+        首页为探索页（ROUTE_MAIN），下载页是二级页（ROUTE_DOWNLOAD）。
+        """
         route = self.page.route or ROUTE_MAIN
         self.log_view = None
         self.main_page = None
@@ -135,17 +138,18 @@ class AppUI:
             view = SettingsPage(self).build_view()
         elif route == ROUTE_EXPLORER:
             view = ExplorerPage(self).build_view()
-        elif route == ROUTE_EXPLORE:
-            if self.explore_page is None:
-                self.explore_page = ExplorePage(self)
-            view = self.explore_page.build_view()
+        elif route == ROUTE_DOWNLOAD:
+            # 下载页不再是首页，但 main_page 仍指向它，供配置同步与下载调度使用
+            self.main_page = MainPage(self)
+            view = self.main_page.build_view()
         elif route == ROUTE_ALBUM:
             view = AlbumPage(self).build_view()
         elif route == ROUTE_HELP:
             view = HelpPage(self).build_view()
         else:
-            self.main_page = MainPage(self)
-            view = self.main_page.build_view()
+            if self.explore_page is None:
+                self.explore_page = ExplorePage(self)
+            view = self.explore_page.build_view()
         self.page.views.append(view)
         self.update()
 
@@ -200,7 +204,7 @@ class AppUI:
     # 配置持久化
     # ------------------------------------------------------------------
     def sync_conf(self):
-        """把主页上的输入同步进配置（设置页自身不缓存输入）。"""
+        """把下载页上的输入同步进配置（设置页自身不缓存输入）。"""
         if self.main_page is not None:
             self.main_page.sync_conf_from_ui()
 
