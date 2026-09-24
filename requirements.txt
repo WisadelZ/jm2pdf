@@ -3,4 +3,5 @@ pyyaml
 pillow
 img2pdf
 pikepdf
+pycryptodome
 flet

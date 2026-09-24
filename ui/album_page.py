@@ -4,12 +4,13 @@
 入口来自探索页点击名称；信息通过 jmcomic 的 get_album_detail 现取。
 进入页面即自动取前 5 页预览（取到几张展示几张），预览图点击后可放大查看，
 放大后可用两侧按钮在这几张之间翻页。
+「收藏」在弹窗里选收藏夹后把本子加入该收藏夹。
 「浏览」按钮打开在线浏览层（与资源管理器的浏览功能同一套界面）。
 """
 
 import flet as ft
 
-from core import explore
+from core import explore, favorite
 from core.constants import (COLOR_ERR, ROUTE_ALBUM, ROUTE_MAIN,
                             WINDOW_HEIGHT, WINDOW_WIDTH)
 from core.downloader import PREVIEW_LIMIT, album_url, fetch_cover, fetch_preview_images
@@ -18,6 +19,12 @@ from ui.reader_view import ReaderView
 
 COVER_WIDTH = 220
 COVER_HEIGHT = 293
+
+# 收藏弹窗：宽度固定，高度按收藏夹数量收敛，两者都不随窗口尺寸变化
+FOLDER_DIALOG_WIDTH = 240
+FOLDER_ITEM_HEIGHT = 34
+FOLDER_DIALOG_MIN_HEIGHT = 80
+FOLDER_DIALOG_MAX_HEIGHT = 300
 
 # 并排两项（点赞数/观看数、页数/章节数）的排版：左项固定宽度，
 # 两行右项的起始位置就一致（观看数与章节数上下对齐）；PAIR_GAP 是两列之间的固定间距
@@ -66,6 +73,12 @@ def _count_text(value):
     return ""
 
 
+def _folder_dialog_height(count):
+    """收藏弹窗高度按收藏夹数量算：条目越多越高，但限制在上下限之间。"""
+    height = max(1, count) * FOLDER_ITEM_HEIGHT
+    return max(FOLDER_DIALOG_MIN_HEIGHT, min(FOLDER_DIALOG_MAX_HEIGHT, height))
+
+
 class AlbumPage:
     def __init__(self, app):
         self.app = app
@@ -76,6 +89,12 @@ class AlbumPage:
         self.preview_index = 0           # 放大查看时当前显示的是第几张
         self.preview_image_width = 0     # 预览图当前宽度（按预览区实测宽度算）
         self.preview_avail = 0.0         # 预览区实测宽度
+        self.favorite_loading = False    # 是否正在读取收藏夹列表
+        self.favorite_open = False       # 收藏弹窗是否还开着
+        self.favorite_group = None
+        self.favorite_dialog = None
+        self.btn_favorite_confirm = None
+        self.is_favorited = False        # 详情接口自带收藏状态，进入页面即可用
 
     def t(self, key, **kwargs):
         return self.app.t(key, **kwargs)
@@ -97,6 +116,8 @@ class AlbumPage:
         ], spacing=10, expand=True)
         self.btn_browse = ft.Button(self.t("btn_browse"), icon=ft.Icons.AUTO_STORIES,
                                     on_click=self._on_browse)
+        self.btn_favorite = ft.Button(self.t("btn_favorite"), icon=ft.Icons.STAR_BORDER,
+                                      on_click=self._on_favorite)
         buttons = ft.Row([
             ft.Button(self.t("btn_open_site"), icon=ft.Icons.OPEN_IN_NEW,
                       url=album_url(self.album_id)),
@@ -104,6 +125,7 @@ class AlbumPage:
                       on_click=self._on_download),
             ft.Button(self.t("btn_add_to_queue"), icon=ft.Icons.PLAYLIST_ADD,
                       on_click=self._on_add_queue),
+            self.btn_favorite,
             self.btn_browse,
         ], spacing=10, wrap=True)
         # 预览区：按钮下方那块空白，进页面就自动取前几页填上，未加载时为空容器
@@ -196,6 +218,8 @@ class AlbumPage:
         try:
             client = explore.new_client(self.app.conf)
             album = client.get_album_detail(self.album_id)
+            # 详情接口自带收藏状态：实心星号表示已收藏、空心表示未收藏，不需要额外请求
+            self.set_favorited(album.is_favorite)
             cover = fetch_cover(album.album_id)
             if cover:
                 self.cover_holder.content = ft.Image(
@@ -225,6 +249,90 @@ class AlbumPage:
 
     def _on_add_queue(self, e):
         self.app.append_ids([self.album_id])
+
+    # ------------------------------------------------------------------
+    # 收藏（选收藏夹后加入）
+    # ------------------------------------------------------------------
+    def set_favorited(self, favorited):
+        """同步收藏状态：已收藏用实心星号、未收藏用空心星号。"""
+        self.is_favorited = bool(favorited)
+        self.btn_favorite.icon = ft.Icons.STAR if self.is_favorited else ft.Icons.STAR_BORDER
+        self.app.update()
+
+    def _on_favorite(self, e=None):
+        """已收藏时点按钮＝取消收藏；未收藏时打开弹窗选收藏夹加入。
+
+        弹窗尺寸由内容量决定（宽度固定、高度按条目数收敛），不随窗口大小变化。
+        """
+        if self.is_favorited:
+            self.app.remove_favorite(self.album_id)
+            return
+        if self.favorite_loading:
+            return
+        self.favorite_loading = True
+        self.favorite_open = True
+        self.favorite_group = ft.RadioGroup(value="", content=ft.Column([
+            ft.Row([ft.ProgressRing(width=18, height=18, stroke_width=2),
+                    ft.Text(self.t("favorite_choose_loading"), size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT)], spacing=8),
+        ], spacing=0))
+        self.btn_favorite_confirm = ft.TextButton(self.t("btn_confirm"), disabled=True,
+                                                  on_click=self._confirm_favorite)
+        self.favorite_dialog = ft.AlertDialog(
+            title=ft.Text(self.t("favorite_choose_title"), size=16),
+            content=ft.Container(content=self.favorite_group, width=FOLDER_DIALOG_WIDTH,
+                                 height=_folder_dialog_height(1),
+                                 alignment=ft.Alignment.TOP_LEFT),
+            title_padding=ft.Padding.only(left=16, right=16, top=12, bottom=0),
+            content_padding=ft.Padding.only(left=16, right=16, top=6, bottom=0),
+            actions_padding=ft.Padding.only(left=8, right=8, top=0, bottom=6),
+            actions=[
+                ft.TextButton(self.t("btn_cancel"),
+                              on_click=lambda e: self._close_favorite_dialog()),
+                self.btn_favorite_confirm,
+            ],
+        )
+        self.app.page.show_dialog(self.favorite_dialog)
+        self.app.page.run_thread(self._load_folders)
+
+    def _load_folders(self):
+        """取到收藏夹后在前面补上「默认收藏夹」（加入全部、不进单独收藏夹）。"""
+        try:
+            folders = [(favorite.FOLDER_ALL, self.t("favorite_folder_all"))]
+            folders += favorite.fetch_folders(self.app.conf)
+            error = None
+        except Exception as exc:
+            folders, error = [], exc
+        self.favorite_loading = False
+        if self.favorite_open:
+            self._fill_favorite_dialog(folders, error)
+
+    def _fill_favorite_dialog(self, folders, error):
+        """把取到的收藏夹填进弹窗；读取失败时禁用确认。"""
+        if error is not None:
+            self.favorite_group.content = ft.Column([
+                ft.Text(self.t("favorite_choose_failed", error=error), size=12,
+                        color=COLOR_ERR, selectable=True)], spacing=0)
+        else:
+            self.favorite_group.value = folders[0][0]
+            self.favorite_group.content = ft.Column(
+                [ft.Radio(value=fid, label=name, label_style=ft.TextStyle(size=13))
+                 for fid, name in folders],
+                spacing=0, scroll=ft.ScrollMode.AUTO)
+        self.btn_favorite_confirm.disabled = not folders
+        self.favorite_dialog.content.height = _folder_dialog_height(len(folders))
+        self.app.update()
+
+    def _confirm_favorite(self, e=None):
+        folder_id = self.favorite_group.value
+        if not folder_id:
+            return
+        self._close_favorite_dialog()
+        self.app.add_to_favorite(self.album_id, folder_id)
+
+    def _close_favorite_dialog(self):
+        self.favorite_open = False
+        self.app.page.pop_dialog()
 
     # ------------------------------------------------------------------
     # 浏览（在线看本子）

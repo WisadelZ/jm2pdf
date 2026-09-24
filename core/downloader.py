@@ -7,12 +7,13 @@ import os
 import re
 import smtplib
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 import jmcomic
 import yaml
 from PIL import Image
 
-from core import pdf_metadata
+from core import account, pdf_metadata
 from core.config import resolve_path
 from utils.helpers import clamp
 
@@ -31,6 +32,9 @@ COVER_SIZE = "_3x4"
 # 图片 CDN 会拒绝空 User-Agent（返回 403），取图时显式带一个
 COVER_HEADERS = {"User-Agent": "Mozilla/5.0"}
 
+# 批量取封面图时的并发线程数
+COVER_WORKERS = 8
+
 # 详情页「预览前 5 页」最多取几张
 PREVIEW_LIMIT = 5
 
@@ -48,15 +52,42 @@ def cover_url(album_id, size=COVER_SIZE):
     return jmcomic.JmcomicText.get_album_cover_url(str(album_id), size=size)
 
 
+def fetch_image_bytes(url):
+    """按 URL 取图片字节，供界面控件直接显示（只在内存中，不落盘）；失败返回 None。"""
+    if not url:
+        return None
+    try:
+        request = urllib.request.Request(url, headers=COVER_HEADERS)
+        with urllib.request.urlopen(request, timeout=15) as resp:
+            # 不存在的资源会返回 200 + 空响应，这里按失败处理
+            return resp.read() or None
+    except Exception:      # 图片只是界面的点缀，任何异常都不应影响主流程
+        return None
+
+
 def fetch_cover(album_id, size=COVER_SIZE):
     """取封面图字节，供界面控件直接显示（只在内存中，不落盘）；失败返回 None。"""
-    try:
-        request = urllib.request.Request(cover_url(album_id, size), headers=COVER_HEADERS)
-        with urllib.request.urlopen(request, timeout=15) as resp:
-            # 不存在的本子会返回 200 + 空响应，这里按失败处理
-            return resp.read() or None
-    except Exception:      # 封面只是搜索结果的点缀，任何异常都不应影响搜索本身
-        return None
+    return fetch_image_bytes(cover_url(album_id, size))
+
+
+def fetch_covers(items, workers=COVER_WORKERS):
+    """并发给条目列表补上封面字节（只在内存中，不落盘）；取不到的项保持 None。"""
+    pending = [item for item in items if not item.get("cover")]
+    if not pending:
+        return
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        covers = list(pool.map(lambda item: fetch_cover(item["id"]), pending))
+    for item, cover in zip(pending, covers):
+        item["cover"] = cover
+
+
+def needs_login_to_view(error):
+    """服务端是否明确表示「本子取不到」——这种本子可能只对登录用户可见。
+
+    这是唯一值得用登录态重试的情况；网络抖动等其它错误一律交给用户重试，
+    避免无谓地消耗下载额度。
+    """
+    return isinstance(error, jmcomic.MissingAlbumPhotoException)
 
 
 def fetch_preview_images(conf, album_id, limit=PREVIEW_LIMIT):
@@ -65,8 +96,20 @@ def fetch_preview_images(conf, album_id, limit=PREVIEW_LIMIT):
     返回 ``[{"data": 图片字节, "size": (宽, 高)}, ...]``；站点上的图片是打乱存放的，
     这里按 jmcomic 的分条规则还原（未打乱的直接用原始字节），全程只在内存中处理。
     单页取不到就跳过，一页都没取到时抛出异常，由调用方提示。
+
+    预览属于取图流程，默认不带登录态，避免白白消耗下载额度；只有服务端明确
+    表示本子取不到时，才用登录态再试一次。
     """
-    client = build_option(conf).new_jm_client()
+    try:
+        return _fetch_preview_images(conf, album_id, limit, with_login=False)
+    except Exception as exc:
+        if not (needs_login_to_view(exc) and account.is_logged_in()):
+            raise
+    return _fetch_preview_images(conf, album_id, limit, with_login=True)
+
+
+def _fetch_preview_images(conf, album_id, limit, with_login):
+    client = build_option(conf, with_login=with_login).new_jm_client()
     photo = client.get_album_detail(album_id)[0]
     client.check_photo(photo)              # 补全图片 URL 等信息
     pages = []
@@ -139,10 +182,15 @@ def pdf_filename_rule(dir_rule_dsl):
     return segments[-1]
 
 
-def build_option(conf):
+def build_option(conf, with_login=True):
     """根据界面配置构建 jmcomic Option。
 
-    app 段的下载目录、并发数、登录信息、是否生成 PDF 会覆盖 option 段中的同名项。
+    app 段的下载目录、并发数、是否生成 PDF 会覆盖 option 段中的同名项；
+    登录信息由 :mod:`core.account` 加密保存，``with_login=True`` 时取运行时凭据
+    注入登录插件（读元数据、收藏等需要身份的场景）。
+
+    ``with_login=False`` 用于取图流程（下载 / 预览 / 在线浏览）：站点会按登录
+    身份统计下载额度，因此这些流程默认不带登录态，只有本子确实需要登录时才改用它。
     """
     app_conf = conf.get("app") or {}
     download_dir = resolve_path(app_conf.get("download_dir"))
@@ -158,9 +206,8 @@ def build_option(conf):
     filename_rule = pdf_filename_rule(dir_rule.get("rule"))
 
     plugins = data.setdefault("plugins", {})
-    username = (app_conf.get("username") or "").strip()
-    password = (app_conf.get("password") or "").strip()
-    if username and password:
+    username, password = account.get_credentials()
+    if with_login and username and password:
         plugins.setdefault("after_init", []).insert(0, {
             "plugin": "login",
             "kwargs": {"username": username, "password": password},

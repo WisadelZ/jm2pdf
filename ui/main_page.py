@@ -85,18 +85,11 @@ class MainPage:
             label=self.t("label_thread_photo"), width=100,
             value=str(clamp(app_conf.get("thread_photo", 16), 1, 64)),
             on_change=lambda e: app.on_conf_change())
-        self.username_field = ft.TextField(
-            label=self.t("label_username"), expand=True, value=app_conf.get("username") or "",
-            on_change=lambda e: app.on_conf_change())
-        self.password_field = ft.TextField(
-            label=self.t("label_password"), expand=True, password=True,
-            value=app_conf.get("password") or "", on_change=lambda e: app.on_conf_change())
 
         opt_tile = ft.ExpansionTile(
             title=ft.Text(self.t("tile_download_options")),
             controls=[ft.Column([
                 ft.Row([self.thread_image_field, self.thread_photo_field], spacing=16),
-                ft.Row([self.username_field, self.password_field], spacing=16),
             ], spacing=14)],
             controls_padding=ft.Padding.only(left=8, right=8, top=14, bottom=8),
         )
@@ -246,10 +239,8 @@ class MainPage:
             "to_pdf": bool(self.to_pdf_switch.value),
             "thread_image": self._field_int(self.thread_image_field, 30),
             "thread_photo": self._field_int(self.thread_photo_field, 16),
-            "username": self.username_field.value or "",
-            "password": self.password_field.value or "",
             # 外观与语言由设置页维护，此处原样保留
-            "theme_mode": app_conf.get("theme_mode", "light"),
+            "theme_mode": app_conf.get("theme_mode", "dark"),
             "language": app_conf.get("language", "zh_cn"),
         }
         conf["mail"] = {

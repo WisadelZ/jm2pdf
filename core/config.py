@@ -20,15 +20,13 @@ CONF_HEADER = """# Jm2PDF 配置文件
 
 # 程序内兜底默认配置：磁盘配置缺失字段时以此补齐
 DEFAULT_CONF_TEXT = """
-version: 2.3.1
+version: 2.4.0
 app:
   download_dir: ./download
   to_pdf: true
   thread_image: 30
   thread_photo: 16
-  username: ''
-  password: ''
-  theme_mode: light
+  theme_mode: dark
   language: zh_cn
 mail:
   enable: false
@@ -56,6 +54,9 @@ option:
 
 # 界面支持的取值
 THEME_MODES = ("light", "dark", "system")
+
+# 账号密码改由 core.account 加密保存，conf.yml 里不再保留（旧配置写盘时一并剔除）
+_CREDENTIAL_KEYS = ("username", "password")
 
 # core/config.py -> 项目根目录（源码运行时 app.py 所在目录）
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -103,6 +104,15 @@ def _dump_conf(conf):
         conf, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
 
+def _strip_credentials(data):
+    """剔除 app 段里的账号密码，避免旧配置或导入的配置把它们明文写回磁盘。"""
+    app_conf = data.get("app")
+    if isinstance(app_conf, dict):
+        for key in _CREDENTIAL_KEYS:
+            app_conf.pop(key, None)
+    return data
+
+
 def ensure_conf_file():
     """确保 conf.yml 存在；首次运行时从打包资源或默认模板生成。"""
     path = conf_path()
@@ -142,7 +152,7 @@ def save_conf(conf):
     """写回 conf.yml，并始终把 version 更新为当前程序版本。"""
     from core.constants import APP_VERSION
 
-    data = copy.deepcopy(conf)
+    data = _strip_credentials(copy.deepcopy(conf))
     data["version"] = APP_VERSION
     with open(conf_path(), "w", encoding="utf-8") as f:
         f.write(_dump_conf(data))
@@ -152,7 +162,7 @@ def export_conf(conf, target_path):
     """把当前配置写到用户指定的文件（用于备份 / 迁移）。"""
     from core.constants import APP_VERSION
 
-    data = copy.deepcopy(conf)
+    data = _strip_credentials(copy.deepcopy(conf))
     data["version"] = APP_VERSION
     with open(target_path, "w", encoding="utf-8") as f:
         f.write(_dump_conf(data))

@@ -15,19 +15,24 @@ import flet as ft
 import jmcomic
 import yaml
 
+from core import account as account_store
 from core import config as conf_mod
+from core import favorite
 from core.config import THEME_MODES
 from core.constants import (APP_VERSION, COLOR_ERR, COLOR_IDLE, COLOR_OK,
-                            ROUTE_ALBUM, ROUTE_DOWNLOAD, ROUTE_EXPLORER, ROUTE_HELP,
-                            ROUTE_MAIN, ROUTE_SETTINGS, UI_FONT_FAMILY,
-                            WINDOW_HEIGHT, WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH,
-                            WINDOW_WIDTH)
+                            ROUTE_ACCOUNT, ROUTE_ALBUM, ROUTE_DOWNLOAD, ROUTE_EXPLORER,
+                            ROUTE_FAVORITE, ROUTE_HELP, ROUTE_MAIN, ROUTE_SETTINGS,
+                            UI_FONT_FAMILY, WINDOW_HEIGHT, WINDOW_MIN_HEIGHT,
+                            WINDOW_MIN_WIDTH, WINDOW_WIDTH)
 from core.downloader import (album_url, build_option, collect_pdfs, fetch_cover,
+                             fetch_covers, fetch_image_bytes, needs_login_to_view,
                              send_mail)
 from core.logging_bridge import UiLogHandler
+from ui.account_page import AccountPage
 from ui.album_page import AlbumPage
 from ui.explore_page import ExplorePage
 from ui.explorer_page import ExplorerPage
+from ui.favorite_page import FavoritePage
 from ui.help_page import HelpPage
 from ui.main_page import MainPage
 from ui.settings_page import SettingsPage
@@ -35,6 +40,10 @@ from utils.helpers import parse_ids
 from utils.i18n import LANGUAGE_NAMES, LANGUAGES, I18n
 
 MAX_LOG_LINES = 500
+
+# 账号页要展示的账号状态字段：登录响应里就有，登录时一并加密保存
+PROFILE_KEYS = ("level", "level_name", "exp", "next_level_exp", "exp_percent",
+                "favorites", "favorites_max", "coin")
 
 
 class AppUI:
@@ -54,11 +63,30 @@ class AppUI:
         self.search_text = ""
         self.detail_album_id = ""       # 探索页当前查看的本子 ID
         self.explore_page = None        # 缓存探索页，从详情返回时保留搜索结果
+        self.favorite_page = None       # 缓存收藏页，从详情返回时保留页码与列表
         self.status_text_value = self.t("status_ready")
         self.status_color = COLOR_IDLE
         # 未落盘的界面输入，用于语言切换重建后还原
         self.pending_ids_text = ""
         self.pending_search_text = ""
+
+        # 账号：登录信息从加密文件读取，凭据只留在内存里供下载层登录使用
+        self.account = account_store.load_account()
+        self.account_avatar = None      # 头像字节，只在内存里，不落盘
+        self.logging_in = False
+        self.avatar_loading = False
+        self.album_page = None          # 当前展示的本子详情页（收藏后同步星号）
+        self.account_page = None        # 当前展示的账号页（异步结果就地刷新）
+        # 账号页的收藏预览：None 表示还没取过，[] 表示取到空
+        self.account_favorites = None
+        self.account_favorites_loading = False
+        self.account_favorites_error = None
+        # 账号状态字段（等级 / 经验 / 收藏数）的补拉状态
+        self.profile_loading = False
+        self.profile_checked = False
+        if self.account:
+            account_store.set_credentials(self.account.get("username"),
+                                          self.account.get("password"))
 
         # 日志缓冲（跨视图重建保留）
         self.log_lines = []
@@ -95,7 +123,7 @@ class AppUI:
         self.build()
 
     def theme_mode_value(self):
-        mode = str(self.conf["app"].get("theme_mode") or "light").lower()
+        mode = str(self.conf["app"].get("theme_mode") or "dark").lower()
         return {
             "light": ft.ThemeMode.LIGHT,
             "dark": ft.ThemeMode.DARK,
@@ -133,17 +161,30 @@ class AppUI:
         route = self.page.route or ROUTE_MAIN
         self.log_view = None
         self.main_page = None
+        self.album_page = None
+        self.account_page = None
         self.page.views.clear()
         if route == ROUTE_SETTINGS:
             view = SettingsPage(self).build_view()
         elif route == ROUTE_EXPLORER:
             view = ExplorerPage(self).build_view()
+        elif route == ROUTE_ACCOUNT:
+            # 留存本页引用：头像 / 状态 / 收藏取回后在本页内就地刷新，不重建整页
+            self.account_page = AccountPage(self)
+            view = self.account_page.build_view()
+        elif route == ROUTE_FAVORITE:
+            # 缓存本页：从本子详情返回时页码与列表仍然保留
+            if self.favorite_page is None:
+                self.favorite_page = FavoritePage(self)
+            view = self.favorite_page.build_view()
         elif route == ROUTE_DOWNLOAD:
             # 下载页不再是首页，但 main_page 仍指向它，供配置同步与下载调度使用
             self.main_page = MainPage(self)
             view = self.main_page.build_view()
         elif route == ROUTE_ALBUM:
-            view = AlbumPage(self).build_view()
+            # 留存本页引用：收藏成功后用于把星号变实心
+            self.album_page = AlbumPage(self)
+            view = self.album_page.build_view()
         elif route == ROUTE_HELP:
             view = HelpPage(self).build_view()
         else:
@@ -311,6 +352,205 @@ class AppUI:
             color=COLOR_OK)
 
     # ------------------------------------------------------------------
+    # 账号
+    # ------------------------------------------------------------------
+    def login(self, username, password):
+        """发起登录：网络请求放到后台线程，完成后按结果重建视图。"""
+        if self.logging_in:
+            return
+        self.logging_in = True
+        self.set_status(self.t("status_logging_in"))
+        self.page.run_thread(self._login_worker, username, password)
+
+    def _login_worker(self, username, password):
+        try:
+            client = build_option(self.conf, with_login=False).new_jm_client()
+            resp = client.login(username, password)
+            record = self._account_record(username, password,
+                                          getattr(resp, "res_data", None))
+            avatar = fetch_image_bytes(record["avatar_url"])
+            account_store.save_account(record)
+            self.account = record
+            self.account_avatar = avatar
+            self.favorite_page = None       # 换账号后旧的收藏数据不再有效
+            self.account_favorites = None
+            self.profile_checked = True     # 登录时已经拿到状态字段，不必再补拉
+            status = self.t("status_login_ok", name=record["nickname"])
+            color = COLOR_OK
+        except Exception as exc:
+            status = self.t("status_login_failed", error=exc)
+            color = COLOR_ERR
+        self.logging_in = False
+        self.rebuild(status=status, color=color)
+
+    def _account_record(self, username, password, profile, previous=None):
+        """把登录响应的账号信息整理成待加密保存的记录。"""
+        if not isinstance(profile, dict):
+            profile = {}
+        prev = previous or {}
+        uid = str(profile.get("uid") or prev.get("uid") or "")
+        record = dict(prev)
+        record.update({
+            "username": username,
+            "password": password,
+            "uid": uid,
+            "nickname": (profile.get("fname") or profile.get("nickname")
+                         or profile.get("username") or username),
+            "avatar_url": self._avatar_url(profile.get("photo"), uid),
+            "level": profile.get("level"),
+            "level_name": profile.get("level_name"),
+            "exp": profile.get("exp"),
+            "next_level_exp": profile.get("nextLevelExp"),
+            "exp_percent": profile.get("expPercent"),
+            "favorites": profile.get("album_favorites"),
+            "favorites_max": profile.get("album_favorites_max"),
+            "coin": profile.get("coin"),
+        })
+        return record
+
+    def ensure_account_profile(self):
+        """账号页要展示的状态字段只有登录时才拿得到。
+
+        旧版本存下来的记录里没有这些字段，这里补拉一次并写回加密文件；
+        每个会话最多补一次，失败就继续展示已有内容，不打扰用户。
+        """
+        if (self.profile_checked or self.profile_loading or not self.account
+                or all(self.account.get(key) is not None for key in PROFILE_KEYS)):
+            return
+        self.profile_checked = True
+        self.profile_loading = True
+        self.page.run_thread(self._profile_worker)
+
+    def _profile_worker(self):
+        try:
+            username, password = account_store.get_credentials()
+            client = build_option(self.conf, with_login=False).new_jm_client()
+            resp = client.login(username, password)
+            record = self._account_record(username, password,
+                                          getattr(resp, "res_data", None),
+                                          previous=self.account)
+            account_store.save_account(record)
+            self.account = record
+        except Exception:
+            pass                            # 补拉只是锦上添花，失败保持原样
+        self.profile_loading = False
+        if self.account_page is not None:
+            self.account_page.refresh_account_info()
+
+    def refresh_account_profile(self):
+        """账号状态可能已变化（例如刚签完到）：强制补拉一次，让 J 币 / 经验跟上。"""
+        if self.profile_loading or not self.account:
+            return
+        self.profile_loading = True
+        self.page.run_thread(self._profile_worker)
+
+    def logout(self):
+        """退出登录：删除本地账号文件并清空内存中的账号信息，回到登录界面。"""
+        try:
+            account_store.delete_account()
+        except OSError as exc:
+            self.set_status(self.t("status_logout_failed", error=exc), COLOR_ERR)
+            return
+        self.account = None
+        self.account_avatar = None
+        self.favorite_page = None
+        self.account_favorites = None
+        self.profile_checked = False
+        self.rebuild(status=self.t("status_logged_out"), color=COLOR_IDLE)
+
+    def add_to_favorite(self, album_id, folder_id):
+        """把本子加入指定收藏夹：网络请求放到后台线程。"""
+        self.set_status(self.t("status_favorite_adding"))
+        self.page.run_thread(self._favorite_worker, album_id, folder_id)
+
+    def remove_favorite(self, album_id):
+        """取消收藏：网络请求放到后台线程。"""
+        self.set_status(self.t("status_favorite_removing"))
+        self.page.run_thread(self._remove_favorite_worker, album_id)
+
+    def _favorite_worker(self, album_id, folder_id):
+        try:
+            favorite.add_to_folder(self.conf, album_id, folder_id)
+        except Exception as exc:
+            self.set_status(self.t("status_favorite_add_failed", error=exc), COLOR_ERR)
+            return
+        self._after_favorite_changed(True)
+        self.set_status(self.t("status_favorite_added"), COLOR_OK)
+
+    def _remove_favorite_worker(self, album_id):
+        try:
+            favorite.remove_from_favorites(self.conf, album_id)
+        except Exception as exc:
+            self.set_status(self.t("status_favorite_remove_failed", error=exc), COLOR_ERR)
+            return
+        self._after_favorite_changed(False)
+        self.set_status(self.t("status_favorite_removed"), COLOR_OK)
+
+    def _after_favorite_changed(self, favorited):
+        """收藏变化后：刷新详情页星号，并让缓存的收藏数据失效。"""
+        if self.album_page is not None:
+            self.album_page.set_favorited(favorited)
+        self.favorite_page = None
+        self.account_favorites = None
+
+    def ensure_account_favorites(self):
+        """账号页预览：进入页面时读取前若干本收藏（含封面字节，只在内存里）。"""
+        if (self.account_favorites is not None or self.account_favorites_loading
+                or not self.account):
+            return
+        self.account_favorites_loading = True
+        self.page.run_thread(self._account_favorites_worker)
+
+    def _account_favorites_worker(self):
+        try:
+            items = favorite.preview_items(self.conf)
+            fetch_covers(items)
+            error = None
+        except Exception as exc:
+            items, error = [], exc
+        self.account_favorites = items
+        self.account_favorites_error = error
+        self.account_favorites_loading = False
+        if self.account_page is not None:
+            self.account_page.refresh_favorites()
+
+    @staticmethod
+    def _avatar_url(photo, uid=""):
+        """把头像字段规范成完整地址；已经是完整地址时原样返回。
+
+        接口返回的头像只是文件名，而头像挂在移动端域名的 /media/users/ 下
+        （网页域名 18comic.vip 上取不到），域名复用 jmcomic 运行时维护的那一组。
+        """
+        photo = (photo or "").strip()
+        if photo.startswith(("http://", "https://")):
+            return photo
+        if not photo and uid:
+            photo = "%s.jpg" % uid
+        domain_list = jmcomic.JmModuleConfig.DOMAIN_API_LIST or []
+        if not photo or not domain_list:
+            return ""
+        domain = str(domain_list[0]).rstrip("/")
+        if not domain.startswith(("http://", "https://")):
+            domain = "https://" + domain
+        return "%s/media/users/%s" % (domain, photo)
+
+    def ensure_avatar(self):
+        """账号页展示头像前取一次头像字节（内存缓存，不落盘）。"""
+        if self.account_avatar is not None or self.avatar_loading or not self.account:
+            return
+        url = self._avatar_url(self.account.get("avatar_url"), self.account.get("uid"))
+        if not url:
+            return
+        self.avatar_loading = True
+        self.page.run_thread(self._avatar_worker, url)
+
+    def _avatar_worker(self, url):
+        self.account_avatar = fetch_image_bytes(url)
+        self.avatar_loading = False
+        if self.account_page is not None:
+            self.account_page.set_avatar(self.account_avatar)
+
+    # ------------------------------------------------------------------
     # 搜索
     # ------------------------------------------------------------------
     def search(self):
@@ -447,12 +687,9 @@ class AppUI:
         try:
             download_dir = conf_mod.resolve_path(conf["app"].get("download_dir"))
             os.makedirs(download_dir, exist_ok=True)
-            option = build_option(conf)
             self.append_log(self.t("log_start", count=len(ids), ids=", ".join(ids)))
             self.append_log(self.t("log_download_dir", path=download_dir))
-            result = jmcomic.download_album(ids, option)
-            failed = getattr(result, "failed", {}) or {}
-            pdfs = collect_pdfs(result)
+            pdfs, failed = self._download(ids, conf)
             for jmid, err in failed.items():
                 self.append_log(self.t("log_download_failed", id=jmid, error=err))
             if conf["app"].get("to_pdf", True):
@@ -479,10 +716,36 @@ class AppUI:
                 self._finish(True, self.t("status_done",
                                           count=len(ids) - len(failed), pdfs=len(pdfs)))
             else:
-                self._finish(False, self.t("status_done_with_errors"))
+                # 未能自动解决：明确提示用户重试，而不是悄悄用登录态反复消耗额度
+                self._finish(False, self.t("status_download_retry"))
         except Exception:
             self.append_log(self.t("log_error", error=traceback.format_exc()))
             self._finish(False, self.t("status_error"))
+
+    def _download(self, ids, conf):
+        """下载本子，返回 ``(PDF 路径列表, 失败项)``。
+
+        先整体不带登录态下载（避免站点按登录身份扣下载额度）；只有服务端明确
+        表示本子取不到（可能「只对登录用户可见」）时，才用登录态重试这些本子。
+        网络异常等其它失败一律不重试，交由用户自行重试。
+        """
+        result = jmcomic.download_album(ids, build_option(conf, with_login=False))
+        failed = dict(getattr(result, "failed", {}) or {})
+        pdfs = collect_pdfs(result)
+        if not failed or not account_store.is_logged_in():
+            return pdfs, failed
+        retry_ids = [jmid for jmid, err in failed.items() if needs_login_to_view(err)]
+        if not retry_ids:
+            return pdfs, failed
+        self.append_log(self.t("log_retry_with_login",
+                               ids=", ".join(str(jmid) for jmid in retry_ids)))
+        retry = jmcomic.download_album(retry_ids, build_option(conf, with_login=True))
+        retry_failed = dict(getattr(retry, "failed", {}) or {})
+        pdfs = list(dict.fromkeys(pdfs + collect_pdfs(retry)))
+        # 重试成功的本子不再算失败
+        failed = {jmid: err for jmid, err in failed.items() if jmid in retry_failed}
+        failed.update(retry_failed)
+        return pdfs, failed
 
     def _finish(self, ok, status):
         self.running = False

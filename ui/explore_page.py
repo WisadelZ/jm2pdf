@@ -16,14 +16,12 @@
 依据页面状态还原。
 """
 
-from concurrent.futures import ThreadPoolExecutor
-
 import flet as ft
 
 from core import explore
-from core.constants import (COLOR_ERR, COLOR_IDLE, COLOR_OK, ROUTE_DOWNLOAD,
+from core.constants import (COLOR_ERR, COLOR_IDLE, COLOR_OK, ROUTE_ACCOUNT, ROUTE_DOWNLOAD,
                             ROUTE_EXPLORER, ROUTE_HELP, ROUTE_MAIN, ROUTE_SETTINGS)
-from core.downloader import fetch_cover
+from core.downloader import fetch_covers
 
 # 单个格子的封面尺寸（3:4），尺寸固定以便按窗口宽度自动换行
 COVER_WIDTH = 140
@@ -34,9 +32,6 @@ NAME_HEIGHT = 34
 # 界面每页条数；库每页 80 条，因此 4 个界面页共用一个库页
 PAGE_SIZE = 20
 UI_PAGES_PER_LIB_PAGE = max(1, explore.LIB_PAGE_SIZE // PAGE_SIZE)
-
-# 封面并发取图线程数（只在内存中，不落盘）
-COVER_WORKERS = 8
 
 # 搜索框整体宽度（居中显示）
 SEARCH_BAR_WIDTH = 470
@@ -172,11 +167,13 @@ class ExplorePage:
         return ft.Row([control], alignment=ft.MainAxisAlignment.CENTER)
 
     def _build_toolbar(self):
-        """顶栏菜单：下载 / 资源管理器 / 帮助 / 设置。"""
+        """顶栏菜单：下载 / 账号 / 资源管理器 / 帮助 / 设置。"""
         app = self.app
         return ft.Row([
             ft.OutlinedButton(self.t("btn_download"), icon=ft.Icons.DOWNLOAD,
                               on_click=lambda e: app.navigate(ROUTE_DOWNLOAD)),
+            ft.OutlinedButton(self.t("btn_account"), icon=ft.Icons.PERSON_OUTLINE,
+                              on_click=lambda e: app.navigate(ROUTE_ACCOUNT)),
             ft.OutlinedButton(self.t("btn_explorer"), icon=ft.Icons.FOLDER_OPEN,
                               on_click=lambda e: app.navigate(ROUTE_EXPLORER)),
             ft.OutlinedButton(self.t("btn_help"), icon=ft.Icons.HELP_OUTLINE,
@@ -513,7 +510,7 @@ class ExplorePage:
                     self.page_cache.pop(next(iter(self.page_cache)))
             offset = ((self.ui_page - 1) % UI_PAGES_PER_LIB_PAGE) * PAGE_SIZE
             self.items = items[offset:offset + PAGE_SIZE]
-            self._load_covers(self.items)
+            fetch_covers(self.items)
         except Exception as exc:
             error = exc
             self.items = []
@@ -550,17 +547,6 @@ class ExplorePage:
             else:
                 self.app.set_status(self.t("status_search_done"), COLOR_IDLE)
         self.app.update()
-
-    @staticmethod
-    def _load_covers(items):
-        """并发取封面图字节（只在内存中，不落盘）；取不到的项保持 None。"""
-        pending = [item for item in items if not item.get("cover")]
-        if not pending:
-            return
-        with ThreadPoolExecutor(max_workers=COVER_WORKERS) as pool:
-            covers = list(pool.map(lambda item: fetch_cover(item["id"]), pending))
-        for item, cover in zip(pending, covers):
-            item["cover"] = cover
 
     def _refresh_pager(self):
         """翻页与排序菜单一起出现：有结果时才显示，搜索过程中不提前露出。"""

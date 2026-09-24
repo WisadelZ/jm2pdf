@@ -99,8 +99,8 @@ class SettingsPage:
         )
 
     def _current_theme_mode(self):
-        mode = str(self.app.conf["app"].get("theme_mode") or "light").lower()
-        return mode if mode in ("light", "dark", "system") else "light"
+        mode = str(self.app.conf["app"].get("theme_mode") or "dark").lower()
+        return mode if mode in ("light", "dark", "system") else "dark"
 
     # ------------------------------------------------------------------
     # 交互

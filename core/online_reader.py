@@ -10,7 +10,8 @@
 
 import threading
 
-from core.downloader import build_option, fetch_page_image
+from core import account
+from core.downloader import build_option, fetch_page_image, needs_login_to_view
 
 # 还没取到的页按这个尺寸给个占位比例（竖式列宽、横式等比缩放都靠它先排出布局）
 DEFAULT_PAGE_SIZE = (1000, 1414)
@@ -20,6 +21,16 @@ class OnlineAlbumError(Exception):
     """打不开本子或定位不到页面时抛出，由界面提示用户。"""
 
 
+def _open(conf, album_id, with_login):
+    """建客户端并取本子详情；打不开时抛 OnlineAlbumError。"""
+    client = build_option(conf, with_login=with_login).new_jm_client()
+    try:
+        album = client.get_album_detail(album_id)
+    except Exception as exc:
+        raise OnlineAlbumError(exc)
+    return client, album
+
+
 class OnlineAlbum:
     """在线本子：按全局页号（跨章节连续编号）逐页取图。"""
 
@@ -27,11 +38,15 @@ class OnlineAlbum:
     numbered_pages = True          # 右下角显示「当前页/总页数」而不是图片名
 
     def __init__(self, conf, album_id):
-        self._client = build_option(conf).new_jm_client()
         try:
-            self._album = self._client.get_album_detail(album_id)
-        except Exception as exc:
-            raise OnlineAlbumError(exc)
+            # 浏览也属于取图流程，默认不带登录态，避免白白消耗下载额度
+            self._client, self._album = _open(conf, album_id, with_login=False)
+        except OnlineAlbumError as exc:
+            cause = exc.args[0] if exc.args else None
+            # 只有服务端明确表示本子取不到时才用登录态重试，其余错误直接报错
+            if not (needs_login_to_view(cause) and account.is_logged_in()):
+                raise
+            self._client, self._album = _open(conf, album_id, with_login=True)
         self.album_id = str(album_id)
         self.name = self._album.name
         self.page_count = int(self._album.page_count or 0)

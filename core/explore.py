@@ -65,7 +65,11 @@ def search(client, mode, keyword, page=1, sort=DEFAULT_SORT, time=DEFAULT_TIME):
 
 
 def to_items(page):
-    """把 JmSearchPage 转成界面用的条目列表（不含封面，封面按需另取）。"""
+    """把搜索结果页 / 收藏列表页转成界面用的条目列表（不含封面，封面按需另取）。
+
+    两类页面都遵循 jmcomic 的 ``JmPageContent`` 结构（``content`` 为
+    ``(本子 id, 信息字典)`` 列表），因此可以共用这一份转换。
+    """
     items = []
     for album_id, info in page.content:
         items.append({
