@@ -9,12 +9,24 @@ import os
 
 import flet as ft
 
-from core.constants import ROUTE_DOWNLOAD, ROUTE_MAIN
+from core.constants import ROUTE_DOWNLOAD, ROUTE_MAIN, ROUTE_TASKS
 from utils.helpers import clamp
 
 # 搜索结果框右侧封面缩略图尺寸（3:4，与网站封面图比例一致）
 COVER_WIDTH = 78
 COVER_HEIGHT = 104
+
+# 日志区上方的队列概览：细进度条宽度 + 概览文本颜色（贴合日志区的深底）
+OVERVIEW_BAR_WIDTH = 80
+OVERVIEW_BAR_HEIGHT = 4
+OVERVIEW_TEXT_COLOR = "#9a9a9a"
+# 展开下载日志后的日志框高度
+LOG_BOX_HEIGHT = 200
+LOG_BOX_BGCOLOR = "#1e1e1e"
+
+# 顶栏右侧留白：图标按钮自带 8px 内边距，这里再补 4px，使图标视觉上距右边缘约 12px，
+# 与页面其余控件的 12px 边距一致
+APPBAR_RIGHT_GAP = 4
 
 
 class MainPage:
@@ -68,13 +80,14 @@ class MainPage:
             height=COVER_HEIGHT + 16, expand=True, padding=2)
         self.btn_add = ft.Button(self.t("btn_add"), on_click=lambda e: app.add_searched())
 
-        # ---- 操作行：PDF 开关 + 开始下载 + 状态 + 进度 ----
+        # ---- 操作行：PDF 开关 + 加入队列 + 状态 ----
+        # 这里不再放不定态进度环：队列里每个任务的确定进度都在任务中心展示，
+        # 状态文本独占剩余宽度，操作行不被挤满
         self.to_pdf_switch = ft.Switch(
             label=self.t("switch_to_pdf"), value=bool(app_conf.get("to_pdf", True)),
             on_change=lambda e: app.on_conf_change())
-        self.btn_start = ft.Button(self.t("btn_start"), on_click=lambda e: app.start())
+        self.btn_start = ft.Button(self.t("btn_add_to_queue"), on_click=lambda e: app.start())
         self.status_text = ft.Text(app.status_text_value, size=12, color=app.status_color, expand=True)
-        self.progress = ft.ProgressRing(visible=False, width=22, height=22, stroke_width=3)
 
         # ---- 下载选项（折叠）----
         self.thread_image_field = ft.TextField(
@@ -85,11 +98,17 @@ class MainPage:
             label=self.t("label_thread_photo"), width=100,
             value=str(clamp(app_conf.get("thread_photo", 16), 1, 64)),
             on_change=lambda e: app.on_conf_change())
+        # 同时下载几个本子（队列级并发）：与上面两个字段同一档尺寸
+        self.task_concurrency_field = ft.TextField(
+            label=self.t("label_task_concurrency"), width=100,
+            value=str(clamp(app_conf.get("task_concurrency", 2), 1, 4)),
+            on_change=lambda e: app.on_conf_change())
 
         opt_tile = ft.ExpansionTile(
             title=ft.Text(self.t("tile_download_options")),
             controls=[ft.Column([
-                ft.Row([self.thread_image_field, self.thread_photo_field], spacing=16),
+                ft.Row([self.thread_image_field, self.thread_photo_field,
+                        self.task_concurrency_field], spacing=16),
             ], spacing=14)],
             controls_padding=ft.Padding.only(left=8, right=8, top=14, bottom=8),
         )
@@ -137,11 +156,29 @@ class MainPage:
         self.opt_tile = opt_tile
         self.mail_tile = mail_tile
 
-        # ---- 日志 ----
+        # ---- 下载日志（折叠面板，默认收起：日志不再长期占着页面）----
         self.log_list = ft.ListView(expand=True, auto_scroll=True, padding=6, spacing=2)
+        # 队列概览作为折叠面板的副标题：收起时也能一眼看到「走到哪了」
+        self.overview_bar = ft.ProgressBar(
+            value=0, width=OVERVIEW_BAR_WIDTH, height=OVERVIEW_BAR_HEIGHT,
+            visible=False, border_radius=OVERVIEW_BAR_HEIGHT / 2)
+        self.overview_text = ft.Text(
+            "", size=11, color=OVERVIEW_TEXT_COLOR, expand=True, max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS)
+        self.overview_row = ft.Row(
+            [self.overview_bar, self.overview_text], spacing=8,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER)
         self.log_box = ft.Container(
-            content=self.log_list, border=ft.Border.all(1, "#333333"),
-            border_radius=6, bgcolor="#1e1e1e", height=200, padding=2)
+            content=self.log_list,
+            border=ft.Border.all(1, "#333333"),
+            border_radius=6, bgcolor=LOG_BOX_BGCOLOR, height=LOG_BOX_HEIGHT,
+            padding=6)
+        self.log_tile = ft.ExpansionTile(
+            title=ft.Text(self.t("tile_download_log")),
+            subtitle=self.overview_row,
+            controls=[self.log_box],
+            controls_padding=ft.Padding.only(left=8, right=8, top=14, bottom=8),
+        )
 
     # ------------------------------------------------------------------
     # 视图
@@ -160,15 +197,16 @@ class MainPage:
             ft.Row([self.dir_field, self.btn_browse], spacing=8),
             ft.Row([self.search_field, self.btn_search], spacing=8),
             ft.Row([self.result_box, self.btn_add], spacing=8),
-            ft.Row([self.to_pdf_switch, self.btn_start, self.status_text, self.progress],
+            ft.Row([self.to_pdf_switch, self.btn_start, self.status_text],
                    spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             self.opt_tile,
             self.mail_tile,
+            self.log_tile,
         ], scroll=ft.ScrollMode.AUTO, spacing=18, expand=True)
 
         # 下载页与资源管理器 / 帮助 / 设置页一样依附于首页：
         # 左上角是返回首页（探索页）的按钮，因此不再放工具栏
-        content = ft.Column([form_col, self.log_box], expand=True, spacing=8)
+        content = ft.Column([form_col], expand=True, spacing=8)
 
         view = ft.View(
             route=ROUTE_DOWNLOAD,
@@ -176,6 +214,11 @@ class MainPage:
                 title=ft.Text(self.t("btn_download")),
                 leading=ft.IconButton(ft.Icons.ARROW_BACK,
                                       on_click=lambda e: app.navigate(ROUTE_MAIN)),
+                # 任务中心入口放顶栏右上角：不占操作行宽度，也不会挤压状态文本；
+                # 末尾补一个与页面内边距相当的空位，避免图标贴到窗口右边缘
+                actions=[ft.IconButton(ft.Icons.LIST_ALT, tooltip=self.t("btn_tasks"),
+                                       on_click=lambda e: app.navigate(ROUTE_TASKS)),
+                         ft.Container(width=APPBAR_RIGHT_GAP)],
             ),
             controls=[content],
             padding=12,
@@ -187,17 +230,41 @@ class MainPage:
         return view
 
     def refresh(self):
-        """按全局状态刷新控件的可用性、状态文本与搜索结果。"""
+        """按全局状态刷新控件的可用性、状态文本、队列概览与搜索结果。"""
         app = self.app
         self.btn_search.disabled = app.searching
         self.btn_add.disabled = not bool(app.searched_id)
-        self.btn_start.disabled = app.running
-        self.progress.visible = app.running
         self.status_text.value = app.status_text_value
         self.status_text.color = app.status_color
+        self._refresh_overview()
         self.result_text.spans = self._result_spans()
         self._sync_cover()
         app.update()
+
+    def _refresh_overview(self):
+        """刷新日志上方的队列概览：统计各状态任务数，并给一条整体进度。
+
+        「整体进度」按已完成 / 已结束计数算，只作粗略参考；每个任务的精确页数
+        进度在任务中心里看。
+        """
+        stats = self.app.queue.stats()
+        waiting, running = stats.get("waiting", 0), stats.get("running", 0)
+        done, failed = stats.get("done", 0), stats.get("failed", 0)
+        busy = bool(waiting or running)
+        self.overview_bar.visible = busy
+        if busy:
+            ended = done + failed + waiting + running
+            self.overview_bar.value = (done / float(ended)) if ended else 0
+            self.overview_text.value = self.t("tasks_overview", total=stats.get("total", 0),
+                                              waiting=waiting, running=running,
+                                              failed=failed)
+        elif stats.get("total"):
+            self.overview_bar.value = 0
+            self.overview_text.value = self.t("tasks_overview_idle",
+                                              total=stats.get("total", 0))
+        else:
+            self.overview_bar.value = 0
+            self.overview_text.value = self.t("tasks_overview_empty")
 
     def _sync_cover(self):
         """按搜索结果同步封面图；只在结果变化时重建，避免刷新时重复加载。"""
@@ -239,6 +306,7 @@ class MainPage:
             "to_pdf": bool(self.to_pdf_switch.value),
             "thread_image": self._field_int(self.thread_image_field, 30),
             "thread_photo": self._field_int(self.thread_photo_field, 16),
+            "task_concurrency": clamp(self._field_int(self.task_concurrency_field, 2), 1, 4),
             # 外观与语言由设置页维护，此处原样保留
             "theme_mode": app_conf.get("theme_mode", "dark"),
             "language": app_conf.get("language", "zh_cn"),
@@ -272,9 +340,17 @@ class MainPage:
         self.app.pending_search_text = self.search_field.value or ""
 
     def _on_clear_ids(self, e):
+        self.clear_ids()
+        self.app.update()
+
+    def clear_ids(self):
+        """清空本子 ID 输入框。
+
+        输入框只用来收集「待入队」的 ID：入队成功后由 :meth:`AppUI.start` 调用，
+        因此不必担心清掉还没入队的内容。
+        """
         self.ids_field.value = ""
         self.app.pending_ids_text = ""
-        self.app.update()
 
     async def _on_browse(self, e):
         # Flet 1.0: get_directory_path 为异步方法，直接返回所选路径

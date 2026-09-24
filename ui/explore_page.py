@@ -78,7 +78,10 @@ class ExplorePage:
         self.searching = False
         self.searched_once = False  # 是否已发起过首次搜索：决定搜索区居中还是置顶
         self.load_epoch = 0         # 加载序号：点「返回」后用它作废还在跑的搜索
-        self.hint_value = app.t("explore_hint")
+        # 提示语只记文本键与参数，取词放到 hint_value 里做：
+        # 本页实例被 AppUI 缓存，若在这里就存成字符串，切换语言后会一直显示旧语言
+        self.hint_key = "explore_hint"
+        self.hint_args = {}
         self.hint_visible = True
         self.pagers = []           # 上下两个翻页工具，统一刷新
         # 控件引用在 build_view 里创建，先置空以便状态刷新方法始终可用
@@ -110,6 +113,16 @@ class ExplorePage:
     @property
     def total_pages(self):
         return max(1, -(-self.total // PAGE_SIZE))
+
+    @property
+    def hint_value(self):
+        """当前提示语：每次都按当前语言取词，避免缓存住切换前的旧语言文本。"""
+        return self.t(self.hint_key, **self.hint_args)
+
+    def _set_hint(self, key, **kwargs):
+        """记录提示语的文本键与参数（实际取词在 :attr:`hint_value` 里做）。"""
+        self.hint_key = key
+        self.hint_args = kwargs
 
     # ------------------------------------------------------------------
     # 视图
@@ -466,7 +479,7 @@ class ExplorePage:
         self.total = 0
         self.ui_page = 1
         self.page_cache = {}
-        self.hint_value = self.t("explore_hint")
+        self._set_hint("explore_hint")
         self.hint_visible = True
         self.searched_once = False
         if self.btn_search is not None:
@@ -480,7 +493,7 @@ class ExplorePage:
         self.load_epoch += 1
         epoch = self.load_epoch
         self.items = []
-        self.hint_value = self.t("status_searching")
+        self._set_hint("status_searching")
         self.hint_visible = True
         # 首次点击搜索即切到置顶布局，与搜索结果无关；此后不再变化
         if not self.searched_once:
@@ -519,10 +532,10 @@ class ExplorePage:
             # 界面与按钮状态由 reset_search 负责，这里什么都不碰
             return
         if error is not None:
-            self.hint_value = self.t("explore_search_failed", error=error)
+            self._set_hint("explore_search_failed", error=error)
             self.hint_visible = True
         elif not self.items:
-            self.hint_value = self.t("explore_no_result")
+            self._set_hint("explore_no_result")
             self.hint_visible = True
         else:
             self.hint_visible = False
@@ -534,7 +547,7 @@ class ExplorePage:
             self._render()
         except Exception as exc:
             self.grid.controls = []
-            self.hint_value = self.t("explore_search_failed", error=exc)
+            self._set_hint("explore_search_failed", error=exc)
             self.hint_visible = True
             self.hint_text.value = self.hint_value
             self.hint_text.visible = True

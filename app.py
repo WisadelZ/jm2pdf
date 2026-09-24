@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Jm2PDF v2.4.0 - 禁漫本子探索、在线浏览与下载工具（Flet UI）
+"""Jm2PDF v2.4.1 - 禁漫本子探索、在线浏览与下载工具（Flet UI）
 
 程序入口：仅负责创建窗口并交给 :class:`ui.app_ui.AppUI` 编排。
 各功能模块分布如下：

@@ -7,9 +7,7 @@
 
 import copy
 import logging
-import os
 import threading
-import traceback
 
 import flet as ft
 import jmcomic
@@ -22,12 +20,12 @@ from core.config import THEME_MODES
 from core.constants import (APP_VERSION, COLOR_ERR, COLOR_IDLE, COLOR_OK,
                             ROUTE_ACCOUNT, ROUTE_ALBUM, ROUTE_DOWNLOAD, ROUTE_EXPLORER,
                             ROUTE_FAVORITE, ROUTE_HELP, ROUTE_MAIN, ROUTE_SETTINGS,
-                            UI_FONT_FAMILY, WINDOW_HEIGHT, WINDOW_MIN_HEIGHT,
+                            ROUTE_TASKS, UI_FONT_FAMILY, WINDOW_HEIGHT, WINDOW_MIN_HEIGHT,
                             WINDOW_MIN_WIDTH, WINDOW_WIDTH)
-from core.downloader import (album_url, build_option, collect_pdfs, fetch_cover,
-                             fetch_covers, fetch_image_bytes, needs_login_to_view,
-                             send_mail)
+from core.downloader import (album_url, build_option, fetch_cover, fetch_covers,
+                             fetch_image_bytes)
 from core.logging_bridge import UiLogHandler
+from core.task_queue import TaskQueue
 from ui.account_page import AccountPage
 from ui.album_page import AlbumPage
 from ui.explore_page import ExplorePage
@@ -36,6 +34,7 @@ from ui.favorite_page import FavoritePage
 from ui.help_page import HelpPage
 from ui.main_page import MainPage
 from ui.settings_page import SettingsPage
+from ui.task_page import TaskPage
 from utils.helpers import parse_ids
 from utils.i18n import LANGUAGE_NAMES, LANGUAGES, I18n
 
@@ -55,7 +54,6 @@ class AppUI:
         self.i18n = I18n(self.conf["app"].get("language"))
 
         # 运行状态（跨视图重建保留）
-        self.running = False
         self.searching = False
         self.searched_id = ""
         self.searched_url = ""
@@ -64,6 +62,7 @@ class AppUI:
         self.detail_album_id = ""       # 探索页当前查看的本子 ID
         self.explore_page = None        # 缓存探索页，从详情返回时保留搜索结果
         self.favorite_page = None       # 缓存收藏页，从详情返回时保留页码与列表
+        self.explorer_page = None       # 缓存资源管理器页，返回时保留搜索词与排序方式
         self.status_text_value = self.t("status_ready")
         self.status_color = COLOR_IDLE
         # 未落盘的界面输入，用于语言切换重建后还原
@@ -95,12 +94,20 @@ class AppUI:
         self.main_page = None
         self._save_timer = None
 
+        # 下载队列：任务状态 / 进度 / 落盘都在 core.task_queue 里，界面只读它的快照
+        self.task_page = None           # 缓存任务中心页，从别处返回时筛选与排序仍保留
+        self._queue_busy = False        # 队列上一次的忙 / 闲状态（用于收尾提示）
+        self._refresh_pending = False   # 是否已排队一次界面刷新（避免刷新任务堆积）
+        self.queue = TaskQueue(conf_provider=self._queue_conf, log=self.append_log,
+                               t=self.t, on_change=self._on_queue_change)
+
         # 目录/文件选择器：Flet 1.0 中 FilePicker 为 service，需注册到 page.services
         self.picker = ft.FilePicker()
         page.services.append(self.picker)
 
         self._setup_window()
         self._setup_logging()
+        self._restore_queue()
         page.on_route_change = self._on_route_change
         self.build()
 
@@ -115,6 +122,15 @@ class AppUI:
             self.page.update()
         except Exception:
             pass
+
+    @property
+    def running(self):
+        """队列里是否有排队中 / 下载中的任务。
+
+        各页面用它来置灰按钮、决定能否重建视图；语义与旧版的「正在下载」一致，
+        只是从「一个批次」变成了「队列里还有活动任务」。
+        """
+        return self.queue.has_active()
 
     def navigate(self, route):
         self.page.navigate(route)
@@ -142,6 +158,9 @@ class AppUI:
         page.theme = ft.Theme(font_family=UI_FONT_FAMILY)
         page.dark_theme = ft.Theme(font_family=UI_FONT_FAMILY)
         page.theme_mode = self.theme_mode_value()
+        # 队列有活动任务时拦下关窗，先落盘并询问是否退出（空闲时照常关闭）
+        page.window.prevent_close = False
+        page.window.on_event = self._on_window_event
 
     def _setup_logging(self):
         handler = UiLogHandler(self.append_log)
@@ -167,7 +186,10 @@ class AppUI:
         if route == ROUTE_SETTINGS:
             view = SettingsPage(self).build_view()
         elif route == ROUTE_EXPLORER:
-            view = ExplorerPage(self).build_view()
+            # 缓存本页：从浏览层返回时搜索词与排序方式仍然保留
+            if self.explorer_page is None:
+                self.explorer_page = ExplorerPage(self)
+            view = self.explorer_page.build_view()
         elif route == ROUTE_ACCOUNT:
             # 留存本页引用：头像 / 状态 / 收藏取回后在本页内就地刷新，不重建整页
             self.account_page = AccountPage(self)
@@ -178,9 +200,14 @@ class AppUI:
                 self.favorite_page = FavoritePage(self)
             view = self.favorite_page.build_view()
         elif route == ROUTE_DOWNLOAD:
-            # 下载页不再是首页，但 main_page 仍指向它，供配置同步与下载调度使用
+            # 下载页不再是首页，但 main_page 仍指向它，供配置同步与入队使用
             self.main_page = MainPage(self)
             view = self.main_page.build_view()
+        elif route == ROUTE_TASKS:
+            # 缓存本页：返回时筛选、排序与搜索词都保留
+            if self.task_page is None:
+                self.task_page = TaskPage(self)
+            view = self.task_page.build_view()
         elif route == ROUTE_ALBUM:
             # 留存本页引用：收藏成功后用于把星号变实心
             self.album_page = AlbumPage(self)
@@ -648,107 +675,160 @@ class AppUI:
         return added
 
     # ------------------------------------------------------------------
-    # 下载
+    # 下载队列
     # ------------------------------------------------------------------
+    def _queue_conf(self):
+        """给队列取一份当前配置（深拷贝：下载中改配置不影响已在跑的任务）。"""
+        return copy.deepcopy(self.conf)
+
     def start(self):
-        if self.running:
+        """下载页「加入下载列表」：把输入框里的 ID 全部入队，随后清空输入框。"""
+        if self.main_page is None:
             return
-        ids = parse_ids(self.main_page.ids_field.value)
-        if not ids:
-            self.set_status(self.t("status_need_ids"), COLOR_ERR)
-            return
-        self._begin_download(ids)
+        if self.enqueue_ids(parse_ids(self.main_page.ids_field.value)):
+            # 输入框只是「待入队列表」，入队后清空，避免同一批重复加入
+            self.main_page.clear_ids()
+            self.main_page.refresh()
 
     def download_ids(self, ids):
-        """直接下载指定 ID（探索页与本子详情页的「直接下载」）。"""
-        if self.running:
-            self.set_status(self.t("status_task_running"), COLOR_ERR)
-            return
-        self._begin_download([str(album_id) for album_id in ids])
+        """直接下载指定 ID（探索页与本子详情页的「直接下载」）：同样只是入队。"""
+        self.enqueue_ids([str(album_id) for album_id in ids])
 
-    def _begin_download(self, ids):
+    def enqueue_ids(self, ids):
+        """把 ID 加入下载队列，返回真正新增的 ID 列表。"""
+        ids = [str(album_id).strip() for album_id in ids]
+        ids = [album_id for album_id in ids if album_id]
+        if not ids:
+            self.set_status(self.t("status_need_ids"), COLOR_ERR)
+            return []
+        # 入队前把界面输入同步进配置并落盘：队列线程随后读的就是这份配置
         self.sync_conf()
-        conf = copy.deepcopy(self.conf)
-        mail_conf = conf["mail"]
+        mail_conf = self.conf["mail"]
         if mail_conf.get("enable") and not (mail_conf.get("sender") and mail_conf.get("password")):
             self.set_status(self.t("status_mail_incomplete"), COLOR_ERR)
-            return
+            return []
         try:
             conf_mod.save_conf(self.conf)
         except OSError:
             pass
-        self.running = True
-        if self.main_page is not None:
-            self.main_page.refresh()
-        self.set_status(self.t("status_downloading"))
-        self.page.run_thread(self._run_task, ids, conf)
+        added, duplicated = self.queue.enqueue(ids)
+        if added:
+            self.set_status(self.t("status_task_enqueued", count=len(added)), COLOR_OK)
+            # 详情只用于让等待中的任务也有名称与总页数，取不到不影响任务本身
+            self.page.run_thread(self._prefetch_details, added)
+        elif duplicated:
+            self.set_status(self.t("status_task_duplicated",
+                                   ids=", ".join(duplicated)), COLOR_ERR)
+        return added
 
-    def _run_task(self, ids, conf):
+    def _prefetch_details(self, ids):
+        """给刚入队的任务补名称与总页数（后台线程，逐个取，失败就跳过）。"""
         try:
-            download_dir = conf_mod.resolve_path(conf["app"].get("download_dir"))
-            os.makedirs(download_dir, exist_ok=True)
-            self.append_log(self.t("log_start", count=len(ids), ids=", ".join(ids)))
-            self.append_log(self.t("log_download_dir", path=download_dir))
-            pdfs, failed = self._download(ids, conf)
-            for jmid, err in failed.items():
-                self.append_log(self.t("log_download_failed", id=jmid, error=err))
-            if conf["app"].get("to_pdf", True):
-                if pdfs:
-                    self.append_log(self.t("log_pdf_total", count=len(pdfs)))
-                    for path in pdfs:
-                        self.append_log("  %s" % path)
-                else:
-                    self.append_log(self.t("log_no_pdf"))
-            else:
-                self.append_log(self.t("log_skip_pdf"))
-            mail_conf = conf["mail"]
-            if mail_conf.get("enable"):
-                if pdfs:
-                    self.append_log(self.t("log_sending_mail"))
-                    try:
-                        send_mail(mail_conf, pdfs, self.append_log, self.t)
-                        self.append_log(self.t("log_mail_sent"))
-                    except Exception as exc:
-                        self.append_log(self.t("log_mail_failed", error=exc))
-                else:
-                    self.append_log(self.t("log_no_pdf_for_mail"))
-            if not failed:
-                self._finish(True, self.t("status_done",
-                                          count=len(ids) - len(failed), pdfs=len(pdfs)))
-            else:
-                # 未能自动解决：明确提示用户重试，而不是悄悄用登录态反复消耗额度
-                self._finish(False, self.t("status_download_retry"))
+            client = build_option(self.conf, with_login=False).new_jm_client()
         except Exception:
-            self.append_log(self.t("log_error", error=traceback.format_exc()))
-            self._finish(False, self.t("status_error"))
+            return
+        for album_id in ids:
+            try:
+                detail = client.get_album_detail(album_id)
+            except Exception:
+                continue
+            self.queue.update_meta(album_id, getattr(detail, "name", ""),
+                                   getattr(detail, "page_count", 0))
 
-    def _download(self, ids, conf):
-        """下载本子，返回 ``(PDF 路径列表, 失败项)``。
+    # ------------------------------------------------------------------
+    # 队列事件与界面刷新
+    # ------------------------------------------------------------------
+    def _on_queue_change(self):
+        """队列状态 / 进度变化（可能来自下载线程）：把刷新交给页面事件循环。
 
-        先整体不带登录态下载（避免站点按登录身份扣下载额度）；只有服务端明确
-        表示本子取不到（可能「只对登录用户可见」）时，才用登录态重试这些本子。
-        网络异常等其它失败一律不重试，交由用户自行重试。
+        进度回调来自 jmcomic 的下载线程，直接改控件会像旧版那样「界面没反应」，
+        因此统一用 ``page.run_task`` 排到页面事件循环里执行，并用待处理标记
+        避免刷新任务堆积。
         """
-        result = jmcomic.download_album(ids, build_option(conf, with_login=False))
-        failed = dict(getattr(result, "failed", {}) or {})
-        pdfs = collect_pdfs(result)
-        if not failed or not account_store.is_logged_in():
-            return pdfs, failed
-        retry_ids = [jmid for jmid, err in failed.items() if needs_login_to_view(err)]
-        if not retry_ids:
-            return pdfs, failed
-        self.append_log(self.t("log_retry_with_login",
-                               ids=", ".join(str(jmid) for jmid in retry_ids)))
-        retry = jmcomic.download_album(retry_ids, build_option(conf, with_login=True))
-        retry_failed = dict(getattr(retry, "failed", {}) or {})
-        pdfs = list(dict.fromkeys(pdfs + collect_pdfs(retry)))
-        # 重试成功的本子不再算失败
-        failed = {jmid: err for jmid, err in failed.items() if jmid in retry_failed}
-        failed.update(retry_failed)
-        return pdfs, failed
+        if self._refresh_pending:
+            return
+        self._refresh_pending = True
+        try:
+            self.page.run_task(self._apply_queue_refresh)
+        except Exception:
+            self._refresh_pending = False
 
-    def _finish(self, ok, status):
-        self.running = False
+    async def _apply_queue_refresh(self):
+        """在页面事件循环里刷新与队列有关的界面。"""
+        self._refresh_pending = False
+        busy = self.queue.has_active()
+        self._sync_close_flag(busy)
+        if self.task_page is not None:
+            self.task_page.refresh()
         if self.main_page is not None:
             self.main_page.refresh()
-        self.set_status(status, COLOR_OK if ok else COLOR_ERR)
+        if busy and not self._queue_busy:
+            self._queue_busy = True
+            self.set_status(self.t("status_downloading"))
+        elif self._queue_busy and not busy:
+            self._queue_busy = False
+            self._set_queue_done_status()
+        self.update()
+
+    def _set_queue_done_status(self):
+        """队列收尾：按本次会话的完成 / 失败情况给一句总结。"""
+        session = self.queue.session()
+        if session.get("failed"):
+            self.set_status(self.t("status_download_retry"), COLOR_ERR)
+        elif session.get("done"):
+            self.set_status(self.t("status_done", count=session["done"],
+                                   pdfs=session.get("pdfs", 0)), COLOR_OK)
+
+    def _sync_close_flag(self, busy):
+        """只在队列有活动任务时拦截关窗，空闲时保持系统默认的关闭行为。"""
+        if bool(self.page.window.prevent_close) != bool(busy):
+            self.page.window.prevent_close = bool(busy)
+
+    def _restore_queue(self):
+        """启动时恢复上次未完成的任务（不自动开跑，交给用户决定何时继续）。"""
+        try:
+            restored = self.queue.load()
+        except Exception:
+            return
+        if restored:
+            self.append_log(self.t("log_queue_restored", count=restored))
+
+    # ------------------------------------------------------------------
+    # 关窗
+    # ------------------------------------------------------------------
+    def _on_window_event(self, e):
+        """关窗事件：队列有活动任务时先落盘并询问，避免悄悄丢掉进度。"""
+        if getattr(e, "type", None) != ft.WindowEventType.CLOSE:
+            return
+        count = self.queue.unfinished_count()
+        if not count:
+            self.queue.shutdown()
+            self._destroy_window()
+            return
+        dialog = ft.AlertDialog(
+            title=ft.Text(self.t("exit_confirm_title")),
+            content=ft.Text(self.t("exit_confirm_body", count=count), size=12,
+                            selectable=True),
+            actions=[
+                ft.TextButton(self.t("btn_cancel"),
+                              on_click=lambda e: self.page.pop_dialog()),
+                ft.TextButton(self.t("btn_exit_keep"),
+                              on_click=lambda e: self._exit_keep_queue()),
+            ],
+        )
+        self.page.show_dialog(dialog)
+
+    def _exit_keep_queue(self):
+        """确认退出：先落盘再关窗，未完成任务下次启动可继续。"""
+        self.page.pop_dialog()
+        self.queue.shutdown()
+        self._destroy_window()
+
+    def _destroy_window(self):
+        self.page.run_task(self._close_window)
+
+    async def _close_window(self):
+        try:
+            await self.page.window.destroy()
+        except Exception:
+            pass

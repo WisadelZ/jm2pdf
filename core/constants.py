@@ -13,7 +13,7 @@ or commercial use is strictly prohibited.
 """
 
 APP_NAME = "jm2pdf"
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 
 # 项目信息（帮助页展示用）
 APP_AUTHOR = "WisadelZ"
@@ -33,9 +33,10 @@ COLOR_OK = "#27ae60"
 COLOR_ERR = "#c0392b"
 COLOR_IDLE = "#666666"
 
-# 路由：首页固定为探索页，下载页作为二级页由首页顶栏的「下载」按钮进入
+# 路由：首页固定为探索页，下载页与任务中心都是二级页，由首页顶栏 / 下载页进入
 ROUTE_MAIN = "/"
 ROUTE_DOWNLOAD = "/download"
+ROUTE_TASKS = "/tasks"
 ROUTE_ACCOUNT = "/account"
 ROUTE_FAVORITE = "/favorite"
 ROUTE_SETTINGS = "/settings"

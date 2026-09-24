@@ -53,7 +53,10 @@ class FavoritePage:
         self.load_epoch = 0          # 加载序号：离开页面后作废还在跑的请求
         self.pagers = []
         self.folder_checks = {}
-        self.hint_value = ""
+        # 提示语只记文本键与参数，取词放到 hint_value 里做：
+        # 本页实例被 AppUI 缓存，若在这里就存成字符串，切换语言后会一直显示旧语言
+        self.hint_key = None
+        self.hint_args = {}
         self.hint_visible = False
         # 控件引用在 build_view 里创建，先置空以便状态刷新方法始终可用
         self.hint_text = None
@@ -74,6 +77,18 @@ class FavoritePage:
     @property
     def total_pages(self):
         return max(1, -(-self.total // PAGE_SIZE))
+
+    @property
+    def hint_value(self):
+        """当前提示语：每次都按当前语言取词，避免缓存住切换前的旧语言文本。"""
+        if self.hint_key is None:
+            return ""
+        return self.t(self.hint_key, **self.hint_args)
+
+    def _set_hint(self, key, **kwargs):
+        """记录提示语的文本键与参数（实际取词在 :attr:`hint_value` 里做）。"""
+        self.hint_key = key
+        self.hint_args = kwargs
 
     # ------------------------------------------------------------------
     # 视图
@@ -279,7 +294,7 @@ class FavoritePage:
         self.load_epoch += 1
         epoch = self.load_epoch
         self.items = []
-        self.hint_value = self.t("favorite_loading")
+        self._set_hint("favorite_loading")
         self.hint_visible = True
         self._render()
         self.app.set_status(self.t("favorite_loading"))
@@ -303,10 +318,10 @@ class FavoritePage:
             # 请求期间用户已切换筛选或离开页面：本次结果作废
             return
         if error is not None:
-            self.hint_value = self.t("favorite_load_failed", error=error)
+            self._set_hint("favorite_load_failed", error=error)
             self.hint_visible = True
         elif not self.items:
-            self.hint_value = self.t("favorite_empty")
+            self._set_hint("favorite_empty")
             self.hint_visible = True
         else:
             self.hint_visible = False
@@ -318,7 +333,7 @@ class FavoritePage:
             self._render()
         except Exception as exc:
             self.grid.controls = []
-            self.hint_value = self.t("favorite_load_failed", error=exc)
+            self._set_hint("favorite_load_failed", error=exc)
             self.hint_visible = True
             self.hint_text.value = self.hint_value
             self.hint_text.visible = True

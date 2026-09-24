@@ -13,7 +13,7 @@ import jmcomic
 import yaml
 from PIL import Image
 
-from core import account, pdf_metadata
+from core import account, pdf_metadata, progress_plugin  # noqa: F401  (导入即注册插件)
 from core.config import resolve_path
 from utils.helpers import clamp
 
@@ -182,7 +182,7 @@ def pdf_filename_rule(dir_rule_dsl):
     return segments[-1]
 
 
-def build_option(conf, with_login=True):
+def build_option(conf, with_login=True, progress=False):
     """根据界面配置构建 jmcomic Option。
 
     app 段的下载目录、并发数、是否生成 PDF 会覆盖 option 段中的同名项；
@@ -191,6 +191,9 @@ def build_option(conf, with_login=True):
 
     ``with_login=False`` 用于取图流程（下载 / 预览 / 在线浏览）：站点会按登录
     身份统计下载额度，因此这些流程默认不带登录态，只有本子确实需要登录时才改用它。
+
+    ``progress=True`` 时额外注入 :mod:`core.progress_plugin` 的进度插件
+    （任务队列用它统计每个任务的页数进度）。
     """
     app_conf = conf.get("app") or {}
     download_dir = resolve_path(app_conf.get("download_dir"))
@@ -206,6 +209,9 @@ def build_option(conf, with_login=True):
     filename_rule = pdf_filename_rule(dir_rule.get("rule"))
 
     plugins = data.setdefault("plugins", {})
+    if progress:
+        for group, key in progress_plugin.PLUGIN_KEYS.items():
+            plugins.setdefault(group, []).append({"plugin": key, "kwargs": {}})
     username, password = account.get_credentials()
     if with_login and username and password:
         plugins.setdefault("after_init", []).insert(0, {
