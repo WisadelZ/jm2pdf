@@ -1,5 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Jm2PDF v2.4.1 - 禁漫本子探索、在线浏览与下载工具（Flet UI）
+# Copyright (C) 2026 WisadelZ
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Jm2PDF v2.4.2 - 禁漫本子探索、在线浏览与下载工具（Flet UI）
 
 程序入口：仅负责创建窗口并交给 :class:`ui.app_ui.AppUI` 编排。
 各功能模块分布如下：
@@ -7,16 +21,6 @@
     core/     业务逻辑（常量、配置、下载、元数据、搜索、账号、收藏、签到、下载目录管理、日志桥接）
     ui/       界面层（主页、探索页、本子详情页、账号页、收藏页、资源管理器页、设置页、帮助页、协调器）
     utils/    通用工具（多语言、辅助函数）
-
-Copyright (c) 2026 WisadelZ
-
-This work is licensed under the CC BY-NC-ND 4.0 International License.
-You may obtain a copy of the License at
-
-    https://creativecommons.org/licenses/by-nc-nd/4.0/
-
-Unauthorized modification, distribution of modified versions,
-or commercial use is strictly prohibited.
 """
 
 import os

@@ -1,8 +1,8 @@
-# Jm2PDF v2.4.1 - jmcomic本子探索、在线浏览与下载工具 📚
+# Jm2PDF v2.4.2 - jmcomic本子探索、在线浏览与下载工具 📚
 
 一个开源免费的jmcomic本子探索、下载与 PDF 合并工具，支持关键词搜索、账号登录、收藏夹、批量操作和邮件推送。
 
-[![License: CC BY-NC-ND 4.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
 [![Windows](https://img.shields.io/badge/Windows-10%2B-green.svg)](https://www.microsoft.com/windows)
 
@@ -31,14 +31,14 @@
 - **配置导入导出**：一键导出配置备份，或从文件导入已有配置。
 - **多语言**：内置简体中文、繁体中文、英文，切换后立即生效。
 - **主题切换**：支持浅色/深色/跟随系统三种外观，默认深色，切换后立即生效。
-- **开源共享**：采用 CC BY-NC-ND 4.0 许可证，允许非商用分享。
+- **开源共享**：采用 GPLv3 许可证，允许自由使用、修改与再分发。
 
 ## 🚀 快速开始
 
 ### 方式一：使用预编译版本（推荐）
 
 1. 访问 [Releases](https://github.com/WisadelZ/jm2pdf/releases) 页面
-2. 下载最新的 `jm2pdf-v2.4.1.exe`
+2. 下载最新的 `jm2pdf-v2.4.2.exe`
 3. 双击运行，输入本子 ID 即可开始使用
 
 ### 方式二：从源码构建
@@ -55,7 +55,7 @@ python -m pip install -r requirements.txt
 python app.py
 
 # 打包成单文件 exe（内部调用 flet pack）
-python build.py
+python scripts/build.py
 ```
 
 ## 📖 使用说明
@@ -87,7 +87,7 @@ python build.py
 - **取消**：会清掉该任务本次下载的图片与 PDF（移入回收站，可从回收站恢复）。
   以前就存在的旧文件不会被误删；若文件夹里还有这类旧文件，会保留该文件夹并在日志里说明
 - **暂停全部**：所有任务立刻暂停；此时加入新任务，新任务会直接开始下载，已经暂停的仍保持暂停
-- 关窗时若还有未完成任务会先确认；队列保存在程序目录下的 `queue.json`，
+- 关窗时若还有未完成任务会先确认；队列保存在 `config/queue.json`，
   下次启动可继续（未完成任务显示为「已暂停」）
 
 ### 搜索功能
@@ -146,7 +146,7 @@ python build.py
 4. 「签到」按钮执行每日签到，弹窗会显示签到状态、当月签到天数、连续签到天数与当天奖励
 5. 「退出登录」删除本机保存的账号信息并回到登录界面
 
-账号与密码由程序**加密保存在程序目录下的 `account.dat`**（AES-256-GCM，密钥与本机标识绑定），
+账号与密码由程序**加密保存在 `config/account.dat`**（AES-256-GCM，密钥与本机标识绑定），
 `conf.yml` 与磁盘上都不出现明文；文件拷到其它机器上无法解密。收藏页支持按收藏夹筛选与翻页，
 交互与探索页的结果网格一致。收藏相关操作需要先登录。
 
@@ -193,15 +193,19 @@ python build.py
 ```
 jm2pdf/
 ├── app.py                      # 程序入口（仅创建窗口）
-├── build.py                    # flet pack 打包脚本
-├── conf.yml                    # 配置模板
-├── icon.ico                    # 应用图标
 ├── requirements.txt            # 依赖清单
-├── LICENSE                     # CC BY-NC-ND 4.0 许可证
+├── LICENSE                     # 许可证指引（GPLv3）
+├── COPYING                     # GNU GPLv3 许可证全文
+├── THIRD_PARTY_NOTICES.md      # 第三方依赖许可声明
 ├── README.md                   # 项目说明
 ├── CHANGELOG.md                # 更新日志
 ├── SECURITY.md                 # 安全策略（凭据处理、漏洞报告）
 ├── .gitignore                  # Git 忽略规则
+├── assets/                     # 静态资源
+│   └── icon.ico                # 应用图标
+├── config/                     # 运行态数据目录（程序首次运行时自动创建，不入库）
+├── scripts/                    # 构建与辅助脚本
+│   └── build.py                # flet pack 打包脚本
 ├── core/                       # 业务逻辑层（不依赖 Flet）
 │   ├── constants.py            # 全局常量与应用元信息
 │   ├── config.py               # 路径解析、conf.yml 读写、导入导出
@@ -238,7 +242,7 @@ jm2pdf/
 
 ## ⚙️ 配置说明
 
-首次运行时会自动生成 `conf.yml`，可手动编辑：
+首次运行时会自动生成 `config/conf.yml`，可手动编辑：
 
 ```yaml
 app:
@@ -259,7 +263,7 @@ mail:
   receiver: ''                  # 收件邮箱（留空=自己）
 ```
 
-登录后的站点账号不写入 `conf.yml`，而是加密保存在程序目录下的 `account.dat`（见「账号、收藏与签到」）；
+登录后的站点账号不写入 `conf.yml`，而是加密保存在 `config/account.dat`（见「账号、收藏与签到」）；
 该文件与本机绑定，拷到其它机器上无法解密。凭据处理与安全边界的完整说明见 [SECURITY.md](SECURITY.md)。
 
 ## 🔧 技术栈
@@ -273,16 +277,13 @@ mail:
 
 欢迎提交 Issue 报告问题或提出建议！
 
-由于本项目采用 CC BY-NC-ND 4.0 许可证（禁止衍生作品），因此不接受 Fork 修改后的 Pull Request。如有功能需求或 Bug，请直接通过 Issue 反馈。
+本项目采用 GPLv3 许可证（允许衍生作品），欢迎提交 Fork 修改后的 Pull Request；如有功能需求或 Bug，也可通过 Issue 反馈。
 
 ## 📄 许可证
 
-Copyright (c) 2026 WisadelZ
+This project is licensed under the GNU General Public License v3.0 or later.
 
-This work is licensed under the CC BY-NC-ND 4.0 International License.
-You may obtain a copy of the License at
-
-    https://creativecommons.org/licenses/by-nc-nd/4.0/
+See the file COPYING for the full license text.
 
 ## 🙏 致谢
 
