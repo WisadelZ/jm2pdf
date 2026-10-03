@@ -15,21 +15,23 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """账号页：登录账号并展示账号信息与账号相关功能入口。
 
-未登录时页面中央自上而下依次是提示语、账号输入框、密码输入框与登录按钮，
-三者各自占据一行并居中。
+未登录时页面中央自上而下依次是提示语、账号输入框、密码输入框、登录按钮，
+以及下方带滚动条的「已登录账号」框（条目悬浮时在右侧显示勾 / 叉按钮）。
 
 登录后左上角展示头像与昵称（昵称在头像右侧），下方依次是：
 收藏列表（折叠式：标题可点击展开 / 收起，右侧「查看更多」进入完整收藏页，
-展开后展示「全部」收藏夹里最前面的若干本）、退出登录。
+展开后展示「全部」收藏夹里最前面的若干本），以及签到 / 退出当前账号 /
+清除全部登录 / 切换账号四个按钮。
 
 账号信息由 :mod:`core.account` 加密保存在程序同级目录，界面不落盘任何明文。
 """
 
 import flet as ft
 
+from core import account as account_store
 from core import checkin
-from core.constants import (COLOR_ERR, COLOR_OK, ROUTE_ACCOUNT, ROUTE_FAVORITE,
-                            ROUTE_MAIN)
+from core.constants import (APPBAR_LEADING_WIDTH, COLOR_ERR, COLOR_OK, ROUTE_ACCOUNT,
+                            ROUTE_FAVORITE)
 
 # 提示语字号：与首页欢迎语接近，内容更长所以略小一号
 PROMPT_FONT_SIZE = 22
@@ -51,11 +53,15 @@ EXP_BAR_WIDTH = 150
 EXP_BAR_HEIGHT = 8
 # 字段缺失时的占位符
 EMPTY_VALUE = "—"
-# 功能入口按钮：统一尺寸，比其它页面的按钮稍大，左边界与头像对齐
-BUTTON_WIDTH = 200
+# 功能入口按钮：同一行等宽排布，高度统一
 BUTTON_HEIGHT = 46
-# 退出登录按钮的红色底色（与全局错误色同一个红）
+# 危险操作（退出当前账号 / 清除全部登录）的红色底色（与全局错误色同一个红）
 DANGER_BGCOLOR = COLOR_ERR
+# 「已登录账号」框：与输入框同宽、固定高度，条目超出时只在框内滚动
+SAVED_ACCOUNTS_HEIGHT = 140
+SAVED_ACCOUNTS_ROW_HEIGHT = 32
+# 用户名条目鼠标悬浮时的高亮底色
+HOVER_BGCOLOR = ft.Colors.SURFACE_CONTAINER_HIGHEST
 
 # 收藏预览的格子尺寸：与收藏页一致，默认窗口宽度下正好 4 本一行、两行
 COVER_WIDTH = 140
@@ -98,17 +104,89 @@ def _percent_text(value):
         return EMPTY_VALUE
 
 
+# 最近一次签到弹窗：手动签到与启动自动签到共用同一份引用，避免弹窗叠加
+_checkin_dialog = None
+
+
+def show_checkin_dialog(app, result, error=None):
+    """签到结果弹窗：尺寸固定，不滚动，只有「确认」一个动作。"""
+    global _checkin_dialog
+    t = app.t
+    if error is not None:
+        # 服务端报错：只说明失败原因，不展示签到统计
+        rows = [(t("checkin_status"), t("checkin_status_failed"), CHECKIN_VALUE_MAX_LINES),
+                (t("checkin_error"), str(error), CHECKIN_ERROR_MAX_LINES)]
+    else:
+        rows = [
+            (t("checkin_status"),
+             t("checkin_status_ok") if result["code"] == checkin.CODE_SUCCESS
+             else t("checkin_status_already"), CHECKIN_VALUE_MAX_LINES),
+            (t("checkin_month_days"), t("checkin_days", days=result["month_days"]),
+             CHECKIN_VALUE_MAX_LINES),
+            (t("checkin_streak"), t("checkin_days", days=result["streak"]),
+             CHECKIN_VALUE_MAX_LINES),
+            (t("checkin_reward"), _reward_text(t, result), CHECKIN_VALUE_MAX_LINES),
+        ]
+        if result["event"]:
+            rows.append((t("checkin_event"), result["event"], CHECKIN_VALUE_MAX_LINES))
+    dialog = ft.AlertDialog(
+        title=ft.Text(t("checkin_title"), size=16),
+        content=ft.Container(
+            content=ft.Column([_dialog_row(*row) for row in rows],
+                              spacing=8, tight=True),
+            width=CHECKIN_DIALOG_WIDTH, height=CHECKIN_DIALOG_HEIGHT,
+            alignment=ft.Alignment.TOP_LEFT),
+        title_padding=ft.Padding.only(left=16, right=16, top=12, bottom=0),
+        content_padding=ft.Padding.only(left=16, right=16, top=6, bottom=0),
+        actions_padding=ft.Padding.only(left=8, right=8, top=0, bottom=6),
+        actions=[ft.TextButton(t("btn_confirm"),
+                               on_click=lambda e: _close_checkin_dialog(app))],
+    )
+    # 上一次的签到弹窗若还开着先关掉：叠加时 pop_dialog 只关最上面那个，
+    # 下面还压着一个同样的弹窗，看起来就是「点了确认退不出去」
+    if _checkin_dialog is not None and _checkin_dialog.open:
+        app.page.pop_dialog()
+    _checkin_dialog = dialog
+    app.page.show_dialog(dialog)
+
+
+def _close_checkin_dialog(app):
+    """确认：关掉签到弹窗。"""
+    global _checkin_dialog
+    app.page.pop_dialog()
+    _checkin_dialog = None
+
+
+def _reward_text(t, result):
+    """当天签到奖励：成功时展示解析到的 J 币 / 经验，否则退回服务端原文。"""
+    if result["code"] != checkin.CODE_SUCCESS:
+        return t("checkin_reward_claimed")
+    coin, exp = result["coin"], result["exp"]
+    if coin is None and exp is None:
+        return result["msg"] or EMPTY_VALUE
+    return t("checkin_reward_value", coin=_int_text(coin or 0), exp=_int_text(exp or 0))
+
+
+def _dialog_row(label, value, value_max_lines):
+    """一行「标签 + 值」：值超过给定行数就省略，完整内容放在 tooltip 里。"""
+    return ft.Column([
+        ft.Text(label, size=11, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1),
+        ft.Text(value, size=13, selectable=True, max_lines=value_max_lines,
+                tooltip=value or None, overflow=ft.TextOverflow.ELLIPSIS),
+    ], spacing=2, tight=True)
+
+
 class AccountPage:
     def __init__(self, app):
         self.app = app
         self.favorites_expanded = True   # 收藏列表默认展开
         self.checking_in = False         # 是否正在签到
-        self.checkin_dialog = None       # 当前签到弹窗（避免重复叠加）
         self.fav_arrow = None
         self.fav_body = None
         self.btn_checkin = None
         self.avatar_holder = None        # 头像容器：异步取到后就地替换
         self.info_holder = None          # 账号状态容器：异步刷新时就地替换
+        self.accounts_holder = None      # 「已登录账号」列表：清除账号后就地刷新
 
     def t(self, key, **kwargs):
         return self.app.t(key, **kwargs)
@@ -118,9 +196,11 @@ class AccountPage:
     # ------------------------------------------------------------------
     def build_view(self):
         app = self.app
+        # 「切换账号」时虽然仍是登录态，但要展示登录界面（含「已登录账号」列表）
+        logged_in = bool(app.account) and not app.account_picker
         self.status_text = ft.Text(app.status_text_value, size=12, color=app.status_color,
                                    text_align=ft.TextAlign.CENTER)
-        if app.account:
+        if logged_in:
             # 登录后有收藏预览，内容会超出窗口高度，因此整列可滚动
             content = ft.Column([self._logged_view(), self.status_text], expand=True,
                                 spacing=PREVIEW_GAP, scroll=ft.ScrollMode.AUTO,
@@ -130,20 +210,29 @@ class AccountPage:
             content = ft.Column([body, self.status_text], expand=True, spacing=8,
                                 horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
+        # 「切换账号」是账号页内的临时界面：返回上一级应取消切换回到已登录界面，
+        # 而不是像普通二级页那样退回进入账号页之前的页面
+        back = (lambda e: app.cancel_account_picker()) if app.account_picker else None
         view = ft.View(
             route=ROUTE_ACCOUNT,
             appbar=ft.AppBar(
                 title=ft.Text(self.t("account_title")),
-                leading=ft.IconButton(ft.Icons.ARROW_BACK,
-                                      on_click=lambda e: app.navigate(ROUTE_MAIN)),
+                leading=app.nav_leading(on_back=back),
+                leading_width=APPBAR_LEADING_WIDTH,
+                # 登录后右上角提供刷新按钮：主动重新拉取头像 / 状态 / 收藏
+                actions=[ft.IconButton(ft.Icons.REFRESH,
+                                       tooltip=self.t("btn_refresh_account"),
+                                       on_click=lambda e: app.refresh_account_data())]
+                if logged_in else None,
             ),
             controls=[content],
             padding=12,
         )
         app.bind_status(self.status_text)
-        app.ensure_avatar()
-        app.ensure_account_favorites()
-        app.ensure_account_profile()
+        if logged_in:
+            app.ensure_avatar()
+            app.ensure_account_favorites()
+            app.ensure_account_profile()
         return view
 
     @staticmethod
@@ -170,7 +259,87 @@ class AccountPage:
             self.password_field,
             self.btn_login,
         ], spacing=18, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
-        return self._centered(body)
+        return self._centered(ft.Column([body, self._saved_accounts_section()],
+                                        spacing=24,
+                                        horizontal_alignment=ft.CrossAxisAlignment.CENTER))
+
+    # ------------------------------------------------------------------
+    # 登录页 - 已登录账号
+    # ------------------------------------------------------------------
+    def _saved_accounts_section(self):
+        """登录页下方的「已登录账号」：固定高度的框，条目超出时只在框内滚动。"""
+        self.accounts_holder = ft.Column(self._saved_account_controls(), spacing=2,
+                                         scroll=ft.ScrollMode.AUTO, expand=True)
+        box = ft.Container(
+            content=self.accounts_holder,
+            width=FIELD_WIDTH, height=SAVED_ACCOUNTS_HEIGHT,
+            border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=8, padding=4,
+        )
+        return ft.Column([
+            ft.Text(self.t("account_logged_in"), size=14),
+            box,
+        ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+
+    def _saved_account_controls(self):
+        """「已登录账号」框内的条目；没有已保存账号时给一句占位提示。"""
+        usernames = [(record.get("username") or "").strip()
+                     for record in account_store.load_accounts()]
+        usernames = [name for name in usernames if name]
+        if not usernames:
+            return [ft.Text(self.t("account_logged_in_empty"), size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT)]
+        return [self._account_entry(name) for name in usernames]
+
+    def _account_entry(self, username):
+        """一条已登录用户名：鼠标悬浮时高亮，并在右侧显示勾 / 叉按钮。"""
+        actions = ft.Row([
+            self._entry_button(ft.Icons.CHECK, COLOR_OK,
+                               self.t("btn_login_this_account"),
+                               lambda e: self.app.switch_account(username)),
+            self._entry_button(ft.Icons.CLOSE, COLOR_ERR,
+                               self.t("btn_remove_this_account"),
+                               lambda e: self.app.remove_saved_account(username)),
+        ], spacing=0, visible=False)
+
+        def on_hover(e):
+            # Flet 1.0 的 on_hover 事件 data 是布尔值（进入 True / 离开 False）
+            hovered = e.data is True or e.data == "true"
+            e.control.bgcolor = HOVER_BGCOLOR if hovered else None
+            actions.visible = hovered
+            self.app.update()
+
+        return ft.Container(
+            content=ft.Row([
+                ft.Text(username, size=13, max_lines=1,
+                        overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                actions,
+            ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            height=SAVED_ACCOUNTS_ROW_HEIGHT,
+            padding=ft.Padding.symmetric(horizontal=8),
+            border_radius=6,
+            on_hover=on_hover,
+        )
+
+    @staticmethod
+    def _entry_button(icon, color, tooltip, on_click):
+        """条目上的勾 / 叉：无背景、无边框的图标按钮，带悬浮说明。
+
+        Container 不支持 mouse_cursor，所以外面套一层 GestureDetector 来给出
+        手型指针，点击事件也由它接管。
+        """
+        return ft.GestureDetector(
+            content=ft.Container(content=ft.Icon(icon, size=18, color=color),
+                                 tooltip=tooltip, padding=4, border_radius=4),
+            mouse_cursor=ft.MouseCursor.CLICK,
+            on_tap=on_click)
+
+    def refresh_accounts(self):
+        """清除某个账号后实时刷新「已登录账号」列表。"""
+        if self.accounts_holder is None:
+            return
+        self.accounts_holder.controls = self._saved_account_controls()
+        self.app.update()
 
     def _logged_view(self):
         account = self.app.account or {}
@@ -190,7 +359,12 @@ class AccountPage:
         return ft.Column([
             header,
             self._favorites_section(),
-            ft.Row([self._checkin_button(), self._logout_button()], spacing=12),
+            ft.Row([
+                self._checkin_button(),
+                self._switch_button(),
+                self._logout_button(),
+                self._clear_all_button(),
+            ], spacing=10),
         ], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.START)
 
     @staticmethod
@@ -235,6 +409,16 @@ class AccountPage:
     def _logout_button(self):
         return self._feature_button(self.t("btn_logout"), ft.Icons.LOGOUT,
                                     lambda e: self.app.logout(), danger=True)
+
+    def _clear_all_button(self):
+        return self._feature_button(self.t("btn_clear_all_login"),
+                                    ft.Icons.DELETE_FOREVER,
+                                    lambda e: self.app.clear_all_accounts(), danger=True)
+
+    def _switch_button(self):
+        return self._feature_button(self.t("btn_switch_account"),
+                                    ft.Icons.SWITCH_ACCOUNT,
+                                    lambda e: self.app.show_account_picker())
 
     def _account_info(self, account):
         """账号状态：等级称号、经验进度（进度条 + 数值）、收藏数与 J 币。"""
@@ -357,9 +541,10 @@ class AccountPage:
 
     @staticmethod
     def _feature_button(label, icon, on_click, danger=False):
-        """功能入口按钮：独立一行，尺寸统一，左边界与头像对齐。"""
+        """功能入口按钮：同一行等宽排布，窄窗口下也不会溢出。"""
         return ft.Button(
-            label, icon=icon, width=BUTTON_WIDTH, height=BUTTON_HEIGHT,
+            label, icon=icon, expand=True, height=BUTTON_HEIGHT,
+            style=ft.ButtonStyle(padding=ft.Padding.symmetric(horizontal=8)),
             bgcolor=DANGER_BGCOLOR if danger else None,
             color=ft.Colors.WHITE if danger else None,
             on_click=on_click)
@@ -388,75 +573,7 @@ class AccountPage:
             self.app.refresh_account_profile()      # 签到会改变 J 币 / 经验
         else:
             self.app.set_status(self.t("status_checkin_failed", error=error), COLOR_ERR)
-        self._show_checkin_dialog(result, error)
-
-    def _show_checkin_dialog(self, result, error):
-        """签到结果弹窗：尺寸固定，不滚动，只有「确认」一个动作。"""
-        if error is not None:
-            # 服务端报错：只说明失败原因，不展示签到统计
-            rows = [(self.t("checkin_status"), self.t("checkin_status_failed"),
-                     CHECKIN_VALUE_MAX_LINES),
-                    (self.t("checkin_error"), str(error), CHECKIN_ERROR_MAX_LINES)]
-        else:
-            rows = [
-                (self.t("checkin_status"),
-                 self.t("checkin_status_ok") if result["code"] == 0
-                 else self.t("checkin_status_already"), CHECKIN_VALUE_MAX_LINES),
-                (self.t("checkin_month_days"),
-                 self.t("checkin_days", days=result["month_days"]),
-                 CHECKIN_VALUE_MAX_LINES),
-                (self.t("checkin_streak"),
-                 self.t("checkin_days", days=result["streak"]),
-                 CHECKIN_VALUE_MAX_LINES),
-                (self.t("checkin_reward"), self._reward_text(result),
-                 CHECKIN_VALUE_MAX_LINES),
-            ]
-            if result["event"]:
-                rows.append((self.t("checkin_event"), result["event"],
-                             CHECKIN_VALUE_MAX_LINES))
-        dialog = ft.AlertDialog(
-            title=ft.Text(self.t("checkin_title"), size=16),
-            content=ft.Container(
-                content=ft.Column([self._dialog_row(*row) for row in rows],
-                                  spacing=8, tight=True),
-                width=CHECKIN_DIALOG_WIDTH, height=CHECKIN_DIALOG_HEIGHT,
-                alignment=ft.Alignment.TOP_LEFT),
-            title_padding=ft.Padding.only(left=16, right=16, top=12, bottom=0),
-            content_padding=ft.Padding.only(left=16, right=16, top=6, bottom=0),
-            actions_padding=ft.Padding.only(left=8, right=8, top=0, bottom=6),
-            actions=[ft.TextButton(self.t("btn_confirm"),
-                                   on_click=lambda e: self._close_checkin_dialog())],
-        )
-        # 上一次的签到弹窗若还开着先关掉：叠加时 pop_dialog 只关最上面那个，
-        # 下面还压着一个同样的弹窗，看起来就是「点了确认退不出去」
-        if self.checkin_dialog is not None and self.checkin_dialog.open:
-            self.app.page.pop_dialog()
-        self.checkin_dialog = dialog
-        self.app.page.show_dialog(dialog)
-
-    def _close_checkin_dialog(self):
-        """确认：关掉签到弹窗。"""
-        self.app.page.pop_dialog()
-        self.checkin_dialog = None
-
-    def _reward_text(self, result):
-        """当天签到奖励：成功时展示解析到的 J 币 / 经验，否则退回服务端原文。"""
-        if result["code"] != 0:
-            return self.t("checkin_reward_claimed")
-        coin, exp = result["coin"], result["exp"]
-        if coin is None and exp is None:
-            return result["msg"] or EMPTY_VALUE
-        return self.t("checkin_reward_value",
-                      coin=_int_text(coin or 0), exp=_int_text(exp or 0))
-
-    @staticmethod
-    def _dialog_row(label, value, value_max_lines):
-        """一行「标签 + 值」：值超过给定行数就省略，完整内容放在 tooltip 里。"""
-        return ft.Column([
-            ft.Text(label, size=11, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1),
-            ft.Text(value, size=13, selectable=True, max_lines=value_max_lines,
-                    tooltip=value or None, overflow=ft.TextOverflow.ELLIPSIS),
-        ], spacing=2, tight=True)
+        show_checkin_dialog(self.app, result, error)
 
     # ------------------------------------------------------------------
     # 交互

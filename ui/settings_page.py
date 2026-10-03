@@ -13,16 +13,16 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-"""设置页：配置管理（导入 / 导出）、外观设置、语言设置。
+"""设置页：配置管理（导入 / 导出）、外观设置、语言设置、账号设置。
 
-外观与语言均即时生效；语言切换会触发整棵视图树重建，
+外观、语言与账号设置均即时生效；语言切换会触发整棵视图树重建，
 因此所有界面文本都必须通过 :meth:`AppUI.t` 获取。
 """
 
 import flet as ft
 
 from core.config import conf_path
-from core.constants import ROUTE_MAIN, ROUTE_SETTINGS
+from core.constants import APPBAR_LEADING_WIDTH, COLOR_OK, ROUTE_SETTINGS
 from utils.i18n import LANGUAGE_NAMES, LANGUAGES
 
 
@@ -79,10 +79,27 @@ class SettingsPage:
         language_section = self._section(
             t("section_language"), t("desc_language"), self.lang_group)
 
+        # ---- 账号设置 ----
+        self.auto_login_switch = ft.Switch(
+            label=t("switch_auto_login"),
+            value=bool(app.conf["app"].get("auto_login", False)),
+            on_change=self._on_auto_login_change)
+        account_section = self._section(
+            t("section_account"), t("desc_account"), self.auto_login_switch)
+
+        # ---- 缓存管理 ----
+        cache_section = self._section(
+            t("section_cache"), t("desc_cache"),
+            ft.Row([ft.Button(t("btn_clear_cache"), icon=ft.Icons.DELETE_SWEEP,
+                              on_click=self._on_clear_cache)], spacing=12),
+        )
+
         content = ft.Column([
             config_section,
             appearance_section,
             language_section,
+            account_section,
+            cache_section,
             self.status_text,
         ], spacing=14, scroll=ft.ScrollMode.AUTO, expand=True)
 
@@ -90,8 +107,8 @@ class SettingsPage:
             route=ROUTE_SETTINGS,
             appbar=ft.AppBar(
                 title=ft.Text(t("settings_title")),
-                leading=ft.IconButton(ft.Icons.ARROW_BACK,
-                                      on_click=lambda e: app.navigate(ROUTE_MAIN)),
+                leading=app.nav_leading(),
+                leading_width=APPBAR_LEADING_WIDTH,
             ),
             controls=[content],
             padding=12,
@@ -134,3 +151,16 @@ class SettingsPage:
         language = self.lang_group.value
         if language and language != self.app.i18n.language:
             self.app.apply_language(language)
+
+    def _on_clear_cache(self, e):
+        """清除运行期间产生的内存缓存（不退出登录、不影响配置与下载任务）。"""
+        self.app.clear_cache()
+
+    def _on_auto_login_change(self, e):
+        """自动登录开关：立即写盘，下次启动生效。"""
+        enabled = bool(self.auto_login_switch.value)
+        self.app.conf["app"]["auto_login"] = enabled
+        self.app.flush_conf()
+        self.app.set_status(
+            self.t("status_auto_login_on" if enabled else "status_auto_login_off"),
+            COLOR_OK)

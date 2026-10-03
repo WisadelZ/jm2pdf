@@ -29,7 +29,8 @@ import flet as ft
 
 from core import library, task_queue
 from core.config import resolve_path
-from core.constants import (COLOR_ERR, COLOR_IDLE, COLOR_OK, ROUTE_DOWNLOAD, ROUTE_TASKS)
+from core.constants import (APPBAR_LEADING_WIDTH, COLOR_ERR, COLOR_IDLE, COLOR_OK,
+                            ROUTE_TASKS)
 
 # 以下尺寸与探索页 / 资源管理器的工具控件保持一致（高 40、描边 + 圆角 8）
 TOOL_HEIGHT = 40
@@ -118,9 +119,9 @@ class TaskPage:
             route=ROUTE_TASKS,
             appbar=ft.AppBar(
                 title=ft.Text(self.t("tasks_title")),
-                # 返回下载页（任务中心的入口就在下载页顶栏），而不是回首页
-                leading=ft.IconButton(ft.Icons.ARROW_BACK,
-                                      on_click=lambda e: app.navigate(ROUTE_DOWNLOAD)),
+                # 返回上一级（任务中心的入口就在下载页顶栏）
+                leading=app.nav_leading(),
+                leading_width=APPBAR_LEADING_WIDTH,
                 actions=[self._appbar_slot(self.btn_pause_all),
                          self._appbar_slot(self.btn_resume_all),
                          self._appbar_slot(self.btn_clear_done, trailing=True)],

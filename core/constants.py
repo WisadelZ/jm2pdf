@@ -17,7 +17,7 @@
 """
 
 APP_NAME = "jm2pdf"
-APP_VERSION = "2.4.2"
+APP_VERSION = "2.4.3"
 
 # 项目信息（帮助页展示用）
 APP_AUTHOR = "WisadelZ"
@@ -50,3 +50,6 @@ ROUTE_ALBUM = "/album"
 
 # 界面字体：微软雅黑 UI（Windows 10/11 自带），保证中英文混排字重均匀
 UI_FONT_FAMILY = "Microsoft YaHei UI"
+
+# 左上角导航按钮组（返回上一级 + 直接回主页）的 leading 宽度：容纳两个图标按钮
+APPBAR_LEADING_WIDTH = 100

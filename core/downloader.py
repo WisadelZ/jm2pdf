@@ -13,13 +13,15 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-"""下载层：把界面配置翻译成 jmcomic 选项，并处理下载产物与邮件推送。"""
+"""下载层：把界面配置翻译成 jmcomic 选项，处理下载产物与邮件推送，
+并提供「需要登录态」的接口（收藏 / 签到）所用的会话级登录客户端。"""
 
 import copy
 import io
 import os
 import re
 import smtplib
+import threading
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -254,6 +256,131 @@ def build_option(conf, with_login=True, progress=False):
             if not (isinstance(item, dict) and item.get("plugin") in PDF_PLUGIN_KEYS)
         ]
     return jmcomic.create_option_by_str(yaml.safe_dump(data, allow_unicode=True))
+
+
+# ---------------------------------------------------------------------------
+# 会话级登录客户端：收藏 / 签到这类「必须带登录态」的接口用它
+# ---------------------------------------------------------------------------
+
+# 未登录时服务端的表现：收藏接口返回 code 401 的 JSON 原文，签到接口返回 data 为列表
+_NOT_LOGGED_IN_HINTS = ("請先登入會員", "请先登入会员", "請先登入", "请先登入")
+
+# 本会话复用的登录客户端及其对应的凭据（换账号后自动重建）
+_session_lock = threading.Lock()
+_session_client = None
+_session_credentials = None
+
+
+def reset_jm_session():
+    """丢弃 jmcomic 的全局登录会话。
+
+    jmcomic 把首次请求 ``/setting`` 拿到的 cookies（含会话标识 ``AVS``）缓存到
+    ``JmModuleConfig.APP_COOKIES``，并把它直接赋给之后创建的每一个客户端；登录成功后
+    服务端会把该 ``AVS`` 绑定的会话升级为登录态。因此换账号时必须丢弃这份 cookies，
+    否则新客户端仍带着上一个账号的会话——登录接口会直接返回旧账号的信息，界面也就
+    一直显示旧账号的数据（手动刷新、清缓存都无效，因为它们只是拿旧会话重拉一遍）。
+    """
+    jmcomic.JmModuleConfig.APP_COOKIES = None
+
+
+def fresh_login_client(conf):
+    """建一个「不带任何历史会话」的客户端，供登录 / 校验身份使用。
+
+    先清掉全局 cookies 缓存，再让客户端重建：``new_jm_client`` 的初始化会重新请求
+    ``/setting``，拿到一个全新的 ``AVS``（未被绑定到任何账号），登录请求因此不会命中
+    上一个账号的会话。
+    """
+    reset_jm_session()
+    return build_option(conf, with_login=False).new_jm_client()
+
+
+def logged_in_client(conf, relogin=False):
+    """取本会话用于「需要登录态」请求的客户端，没有（或 ``relogin``）时重新登录。
+
+    这里不走 jmcomic 的 login 插件：插件挂在 option 的 after_init 上，而 jmcomic
+    调用该阶段时是 safe=True（异常只记日志、不往外抛）。登录一旦失败，调用方拿到的
+    就是「看着正常、其实未登录」的客户端，请求会被服务端当游客处理——收藏报 401
+    「請先登入會員」，签到则因为响应 data 是列表而在解 base64 时抛出 TypeError。
+
+    另外禁漫的登录态是按域名隔离的：在 A 域名登录后，用同样的 cookies 请求 B 域名
+    同样会被当成未登录；而 jmcomic 会在请求连续失败后自动切到下一个域名，所以
+    「登录用的域名」和「请求用的域名」可能不是同一个（域名顺序还是进程启动时随机
+    打乱的，重启后又变一个样）。这正是「刚登录首次加载偶发报错、重启就恢复」的原因。
+    因此这里逐个域名试登录，把客户端锁定在登录成功的那个域名上，本会话所有请求
+    都走它，从结构上避免域名漂移。
+    """
+    global _session_client, _session_credentials
+    username, password = account.get_credentials()
+    if not (username and password):
+        raise jmcomic.JmcomicException("未登录：请先在「账号」页登录后再试")
+
+    credentials = (username, password)
+    with _session_lock:
+        if (not relogin and _session_client is not None
+                and _session_credentials == credentials):
+            return _session_client
+        client = _login_new_client(conf, username, password)
+        _session_client, _session_credentials = client, credentials
+        return client
+
+
+def reset_session_client():
+    """丢弃当前登录会话（退出登录、换账号时调用）。
+
+    除了本模块缓存的登录客户端，还要清掉 jmcomic 的全局 cookies（见
+    :func:`reset_jm_session`），否则下一个账号登录时仍会命中上一个账号的会话。
+    """
+    global _session_client, _session_credentials
+    with _session_lock:
+        _session_client, _session_credentials = None, None
+    reset_jm_session()
+
+
+def run_with_login(conf, action):
+    """在登录态下执行 ``action(client)``；若仍被当成游客，重新登录一次再试。
+
+    重试覆盖的是「登录态没能生效」这种偶发情况；重试后依旧失败，就把异常抛给调用方。
+    """
+    client = logged_in_client(conf)
+    try:
+        return action(client)
+    except Exception as exc:
+        if not needs_relogin(exc):
+            raise
+    client = logged_in_client(conf, relogin=True)
+    return action(client)
+
+
+def needs_relogin(error):
+    """判断异常是否表示「服务端把这次请求当成游客处理了」。"""
+    if isinstance(error, TypeError):
+        # 未登录时签到接口的 data 是列表，jmcomic 拿它去 base64 解码会抛这个 TypeError
+        return "bytes-like object" in str(error)
+    text = str(error)
+    return any(hint in text for hint in _NOT_LOGGED_IN_HINTS)
+
+
+def _login_new_client(conf, username, password):
+    """建客户端并登录，返回锁定在「登录成功域名」上的客户端。
+
+    用 :func:`fresh_login_client` 建客户端：每次登录都从一个全新的会话开始，
+    避免新客户端继承上一个账号已登录的 cookies。
+    """
+    client = fresh_login_client(conf)
+    domains = list(client.domain_list)
+    last_error = None
+    for domain in domains:
+        # 一次只留一个域名：登录和后续请求都只能走它，请求重试也不会漂到别的域名上
+        client.domain_list = [domain]
+        try:
+            resp = client.login(username, password)
+            data = getattr(resp, "res_data", None)
+            if not isinstance(data, dict) or not data.get("uid"):
+                raise jmcomic.JmcomicException("登录失败：服务端没有返回账号信息")
+            return client
+        except jmcomic.RequestRetryAllFailException as exc:
+            last_error = exc            # 这个域名不通（或被挡），换下一个再试
+    raise last_error or jmcomic.JmcomicException("登录失败：禁漫接口域名都不可用")
 
 
 def collect_pdfs(result):

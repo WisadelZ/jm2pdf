@@ -28,6 +28,7 @@ import jmcomic
 import yaml
 
 from core import account as account_store
+from core import checkin
 from core import config as conf_mod
 from core import favorite
 from core.config import THEME_MODES
@@ -37,10 +38,10 @@ from core.constants import (APP_VERSION, COLOR_ERR, COLOR_IDLE, COLOR_OK,
                             ROUTE_TASKS, UI_FONT_FAMILY, WINDOW_HEIGHT, WINDOW_MIN_HEIGHT,
                             WINDOW_MIN_WIDTH, WINDOW_WIDTH)
 from core.downloader import (album_url, build_option, fetch_cover, fetch_covers,
-                             fetch_image_bytes)
+                             fetch_image_bytes, fresh_login_client, reset_session_client)
 from core.logging_bridge import UiLogHandler
 from core.task_queue import TaskQueue
-from ui.account_page import AccountPage
+from ui.account_page import AccountPage, show_checkin_dialog
 from ui.album_page import AlbumPage
 from ui.explore_page import ExplorePage
 from ui.explorer_page import ExplorerPage
@@ -68,6 +69,7 @@ class AppUI:
         self.i18n = I18n(self.conf["app"].get("language"))
 
         # 运行状态（跨视图重建保留）
+        self.nav_stack = []             # 导航来源栈：返回按钮据此回到上一级
         self.searching = False
         self.searched_id = ""
         self.searched_url = ""
@@ -87,6 +89,7 @@ class AppUI:
         self.account = account_store.load_account()
         self.account_avatar = None      # 头像字节，只在内存里，不落盘
         self.logging_in = False
+        self.account_picker = False     # 「切换账号」：已登录时也展示登录界面
         self.avatar_loading = False
         self.album_page = None          # 当前展示的本子详情页（收藏后同步星号）
         self.account_page = None        # 当前展示的账号页（异步结果就地刷新）
@@ -97,6 +100,8 @@ class AppUI:
         # 账号状态字段（等级 / 经验 / 收藏数）的补拉状态
         self.profile_loading = False
         self.profile_checked = False
+        self._refreshing_account = False    # 是否处于「主动刷新账号数据」流程中
+        self._account_epoch = 0             # 账号数据代次：换账号 / 清缓存后自增，作废旧请求
         if self.account:
             account_store.set_credentials(self.account.get("username"),
                                           self.account.get("password"))
@@ -124,6 +129,7 @@ class AppUI:
         self._restore_queue()
         page.on_route_change = self._on_route_change
         self.build()
+        self._maybe_auto_checkin()
 
     # ------------------------------------------------------------------
     # 基础工具
@@ -147,7 +153,38 @@ class AppUI:
         return self.queue.has_active()
 
     def navigate(self, route):
+        """跳转到目标路由，并记下来源路由供「返回上一级」使用。"""
+        current = self.page.route or ROUTE_MAIN
+        if route != current:
+            self.nav_stack.append(current)
         self.page.navigate(route)
+
+    def go_back(self):
+        """返回上一级：回到进入当前页之前的那个页面；没有来源时回主页。"""
+        route = self.nav_stack.pop() if self.nav_stack else ROUTE_MAIN
+        if route == (self.page.route or ROUTE_MAIN):
+            route = self.nav_stack.pop() if self.nav_stack else ROUTE_MAIN
+        self.page.navigate(route)
+
+    def go_home(self):
+        """直接回主页：清空导航来源栈。"""
+        self.nav_stack.clear()
+        if (self.page.route or ROUTE_MAIN) != ROUTE_MAIN:
+            self.page.navigate(ROUTE_MAIN)
+
+    def nav_leading(self, on_back=None):
+        """页面左上角的导航按钮组：返回上一级 + 直接回主页（叉图标）。
+
+        两个按钮尺寸一致、紧挨着排列，作为 AppBar 的 leading 使用。
+        """
+        back = ft.IconButton(ft.Icons.ARROW_BACK, tooltip=self.t("btn_back"),
+                             width=44, height=44, icon_size=20,
+                             on_click=on_back or (lambda e: self.go_back()))
+        home = ft.IconButton(ft.Icons.CLOSE, tooltip=self.t("btn_home"),
+                             width=44, height=44, icon_size=20,
+                             on_click=lambda e: self.go_home())
+        return ft.Row([back, home], spacing=0,
+                      vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
     def _on_route_change(self, e=None):
         self.build()
@@ -192,6 +229,9 @@ class AppUI:
         首页为探索页（ROUTE_MAIN），下载页是二级页（ROUTE_DOWNLOAD）。
         """
         route = self.page.route or ROUTE_MAIN
+        if route != ROUTE_ACCOUNT:
+            # 离开账号页就不再停留在「切换账号」的登录界面上
+            self.account_picker = False
         self.log_view = None
         self.main_page = None
         self.album_page = None
@@ -405,24 +445,27 @@ class AppUI:
 
     def _login_worker(self, username, password):
         try:
-            client = build_option(self.conf, with_login=False).new_jm_client()
+            # 用全新会话登录：避免新客户端继承上一个账号已登录的 cookies，
+            # 否则服务端会把这次登录当成「已登录」，直接返回旧账号的信息
+            client = fresh_login_client(self.conf)
             resp = client.login(username, password)
-            record = self._account_record(username, password,
-                                          getattr(resp, "res_data", None))
+            data = getattr(resp, "res_data", None)
+            record = self._account_record(username, password, data)
             avatar = fetch_image_bytes(record["avatar_url"])
+            # 换账号：先作废上一个账号的缓存与在途请求，再写入新账号的数据
+            self._clear_account_cache()
             account_store.save_account(record)
-            self.account = record
-            self.account_avatar = avatar
-            self.favorite_page = None       # 换账号后旧的收藏数据不再有效
-            self.account_favorites = None
-            self.profile_checked = True     # 登录时已经拿到状态字段，不必再补拉
-            status = self.t("status_login_ok", name=record["nickname"])
-            color = COLOR_OK
         except Exception as exc:
-            status = self.t("status_login_failed", error=exc)
-            color = COLOR_ERR
+            self.logging_in = False
+            self.rebuild(status=self.t("status_login_failed", error=exc), color=COLOR_ERR)
+            return
+        self.account = record
+        self.account_avatar = avatar
+        self.profile_checked = True     # 登录时已经拿到状态字段，不必再补拉
         self.logging_in = False
-        self.rebuild(status=status, color=color)
+        self.account_picker = False     # 登录成功后回到正常的已登录界面
+        self.rebuild(status=self.t("status_login_ok", name=record["nickname"]),
+                     color=COLOR_OK)
 
     def _account_record(self, username, password, profile, previous=None):
         """把登录响应的账号信息整理成待加密保存的记录。"""
@@ -460,20 +503,26 @@ class AppUI:
             return
         self.profile_checked = True
         self.profile_loading = True
-        self.page.run_thread(self._profile_worker)
+        self.page.run_thread(self._profile_worker, self._account_epoch)
 
-    def _profile_worker(self):
+    def _profile_worker(self, epoch):
         try:
-            username, password = account_store.get_credentials()
-            client = build_option(self.conf, with_login=False).new_jm_client()
-            resp = client.login(username, password)
-            record = self._account_record(username, password,
+            credentials = account_store.get_credentials()
+            client = fresh_login_client(self.conf)
+            resp = client.login(*credentials)
+            record = self._account_record(credentials[0], credentials[1],
                                           getattr(resp, "res_data", None),
                                           previous=self.account)
-            account_store.save_account(record)
-            self.account = record
         except Exception:
-            pass                            # 补拉只是锦上添花，失败保持原样
+            if epoch == self._account_epoch:
+                self.profile_loading = False
+            return                          # 补拉只是锦上添花，失败保持原样
+        # 期间换了账号 / 清了缓存，或凭据已被别的账号覆盖：结果作废，
+        # 绝不把上一个账号的状态与凭据写回去
+        if epoch != self._account_epoch or account_store.get_credentials() != credentials:
+            return
+        account_store.save_account(record)
+        self.account = record
         self.profile_loading = False
         if self.account_page is not None:
             self.account_page.refresh_account_info()
@@ -483,21 +532,155 @@ class AppUI:
         if self.profile_loading or not self.account:
             return
         self.profile_loading = True
-        self.page.run_thread(self._profile_worker)
+        self.page.run_thread(self._profile_worker, self._account_epoch)
+
+    def _clear_account_cache(self):
+        """清除由当前账号产生的内存缓存（头像、账号状态、收藏预览与收藏列表）。
+
+        同时推进「账号数据代次」：仍在后台跑的旧请求回来时会发现代次已变而作废，
+        不会把上一个账号的数据写回界面。
+        """
+        self._account_epoch += 1
+        self.account_avatar = None
+        self.avatar_loading = False
+        self.favorite_page = None
+        self.account_favorites = None
+        self.account_favorites_error = None
+        self.account_favorites_loading = False
+        self.profile_checked = False
+        self.profile_loading = False
+        self._refreshing_account = False
+
+    def clear_cache(self):
+        """清除软件运行期间产生的内存缓存（不退出登录、不影响配置与下载任务）。"""
+        self._clear_account_cache()
+        # 列表页与搜索结果的缓存：置空后下次进入时重新获取
+        self.explore_page = None
+        self.explorer_page = None
+        self.task_page = None
+        self.album_page = None
+        self.searched_id = ""
+        self.searched_url = ""
+        self.searched_cover = None
+        self.search_text = ""
+        self.set_status(self.t("status_cache_cleared"), COLOR_OK)
+
+    def refresh_account_data(self):
+        """账号页右上角刷新：重新拉取头像、账号状态与收藏预览。"""
+        if not self.account:
+            return
+        self._clear_account_cache()
+        self._refreshing_account = True
+        self.set_status(self.t("status_account_refreshing"))
+        if self.account_page is not None:
+            self.account_page.set_avatar(None)
+            self.account_page.refresh_account_info()
+            self.account_page.refresh_favorites()
+        self.ensure_avatar()
+        self.ensure_account_favorites()
+        self.refresh_account_profile()
 
     def logout(self):
-        """退出登录：删除本地账号文件并清空内存中的账号信息，回到登录界面。"""
+        """退出当前账号：删掉当前账号的凭证，其它已保存账号原样保留。
+
+        退出前先把本账号的缓存清干净（而不是等登录后再覆盖），
+        既避免旧数据短暂残留，也照顾隐私。
+        """
         try:
-            account_store.delete_account()
+            account_store.remove_current_account()
         except OSError as exc:
             self.set_status(self.t("status_logout_failed", error=exc), COLOR_ERR)
             return
+        reset_session_client()          # 连同收藏 / 签到用的登录会话一起丢掉
         self.account = None
-        self.account_avatar = None
-        self.favorite_page = None
-        self.account_favorites = None
-        self.profile_checked = False
+        self.account_picker = False
+        self._clear_account_cache()
         self.rebuild(status=self.t("status_logged_out"), color=COLOR_IDLE)
+
+    def clear_all_accounts(self):
+        """清除全部登录：删掉所有账号凭证并回到登录界面。"""
+        try:
+            account_store.clear_all_accounts()
+        except OSError as exc:
+            self.set_status(self.t("status_clear_all_failed", error=exc), COLOR_ERR)
+            return
+        reset_session_client()
+        self.account = None
+        self.account_picker = False
+        self._clear_account_cache()
+        self.rebuild(status=self.t("status_all_accounts_cleared"), color=COLOR_IDLE)
+
+    def show_account_picker(self):
+        """切换账号：保持当前账号登录态，直接在账号页展示含「已登录账号」的登录界面。"""
+        # 当前账号理应出现在「已登录账号」列表里；文件里若缺失（例如写入被中断）
+        # 就用内存里的记录补写回去，避免列表显示成空。
+        username = (self.account or {}).get("username") or ""
+        if username and not account_store.get_account(username):
+            try:
+                account_store.save_account(self.account)
+            except OSError:
+                pass
+        self.account_picker = True
+        self.rebuild()
+
+    def cancel_account_picker(self):
+        """放弃切换账号：不退出登录，回到账号页的已登录界面。"""
+        self.account_picker = False
+        self.rebuild()
+
+    def switch_account(self, username):
+        """登录指定的已保存账号（登录页勾按钮）：用保存的凭据重新登录。"""
+        if self.logging_in:
+            return
+        record = account_store.get_account(username)
+        if not record:
+            self.set_status(self.t("status_account_not_found", name=username), COLOR_ERR)
+            return
+        self.login(username, record.get("password", ""))
+
+    def remove_saved_account(self, username):
+        """清除指定的已保存账号（登录页叉按钮）：删掉其凭证并实时刷新列表。"""
+        username = (username or "").strip()
+        was_current = bool(self.account
+                           and (self.account.get("username") or "").strip() == username)
+        try:
+            removed = account_store.remove_account(username)
+        except OSError as exc:
+            self.set_status(self.t("status_account_remove_failed", error=exc), COLOR_ERR)
+            return
+        if not removed:
+            return
+        if was_current:
+            # 清掉的正是当前账号：一并退出并回到登录界面
+            reset_session_client()
+            self.account = None
+            self.account_picker = False
+            self._clear_account_cache()
+            self.rebuild(status=self.t("status_account_removed", name=username), color=COLOR_OK)
+            return
+        self.set_status(self.t("status_account_removed", name=username), COLOR_OK)
+        if self.account_page is not None:
+            self.account_page.refresh_accounts()
+
+    def _maybe_auto_checkin(self):
+        """启动时的自动登录：设置里开启且本机已有登录状态时，后台自动签到一次。
+
+        未登录、签到失败、当天已经签到过都保持静默，只有真正签到成功才弹窗告知奖励。
+        """
+        if not self.conf["app"].get("auto_login"):
+            return
+        if not account_store.is_logged_in():
+            return
+        self.page.run_thread(self._auto_checkin_worker)
+
+    def _auto_checkin_worker(self):
+        try:
+            result = checkin.check_in(self.conf)
+        except Exception:
+            return                  # 自动签到失败不打扰用户，手动签到才会给出原因
+        if result["code"] != checkin.CODE_SUCCESS:
+            return                  # 今天已经签到过：同样静默
+        show_checkin_dialog(self, result)
 
     def add_to_favorite(self, album_id, folder_id):
         """把本子加入指定收藏夹：网络请求放到后台线程。"""
@@ -540,20 +723,30 @@ class AppUI:
                 or not self.account):
             return
         self.account_favorites_loading = True
-        self.page.run_thread(self._account_favorites_worker)
+        self.page.run_thread(self._account_favorites_worker, self._account_epoch)
 
-    def _account_favorites_worker(self):
+    def _account_favorites_worker(self, epoch):
         try:
             items = favorite.preview_items(self.conf)
             fetch_covers(items)
             error = None
         except Exception as exc:
             items, error = [], exc
+        if epoch != self._account_epoch:
+            return                          # 期间换了账号 / 清了缓存：结果作废
         self.account_favorites = items
         self.account_favorites_error = error
         self.account_favorites_loading = False
         if self.account_page is not None:
             self.account_page.refresh_favorites()
+        # 主动刷新流程：收藏预览是最后一块数据，回来后就给出完成提示
+        if self._refreshing_account:
+            self._refreshing_account = False
+            if error is None:
+                self.set_status(self.t("status_account_refreshed"), COLOR_OK)
+            else:
+                self.set_status(self.t("status_account_refresh_failed", error=error),
+                                COLOR_ERR)
 
     @staticmethod
     def _avatar_url(photo, uid=""):
@@ -583,10 +776,13 @@ class AppUI:
         if not url:
             return
         self.avatar_loading = True
-        self.page.run_thread(self._avatar_worker, url)
+        self.page.run_thread(self._avatar_worker, url, self._account_epoch)
 
-    def _avatar_worker(self, url):
-        self.account_avatar = fetch_image_bytes(url)
+    def _avatar_worker(self, url, epoch):
+        data = fetch_image_bytes(url)
+        if epoch != self._account_epoch:
+            return                          # 期间换了账号 / 清了缓存：结果作废
+        self.account_avatar = data
         self.avatar_loading = False
         if self.account_page is not None:
             self.account_page.set_avatar(self.account_avatar)

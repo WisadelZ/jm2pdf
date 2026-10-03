@@ -34,7 +34,7 @@ import flet as ft
 
 from core import library, pdf_metadata, reader
 from core.config import resolve_path
-from core.constants import COLOR_ERR, ROUTE_EXPLORER, ROUTE_MAIN
+from core.constants import APPBAR_LEADING_WIDTH, COLOR_ERR, ROUTE_EXPLORER
 from ui.reader_view import ReaderView
 
 # 右侧边栏宽度（窗口默认 660，留给列表的宽度仍然充足）
@@ -120,8 +120,8 @@ class ExplorerPage:
             route=ROUTE_EXPLORER,
             appbar=ft.AppBar(
                 title=ft.Text(self.t("explorer_title")),
-                leading=ft.IconButton(ft.Icons.ARROW_BACK,
-                                      on_click=lambda e: app.navigate(ROUTE_MAIN)),
+                leading=app.nav_leading(),
+                leading_width=APPBAR_LEADING_WIDTH,
             ),
             controls=[ft.Stack([self.content_box, self.browser.build()], expand=True)],
             padding=12,

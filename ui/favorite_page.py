@@ -25,7 +25,7 @@
 import flet as ft
 
 from core import explore, favorite
-from core.constants import (COLOR_ERR, COLOR_IDLE, COLOR_OK, ROUTE_ACCOUNT,
+from core.constants import (APPBAR_LEADING_WIDTH, COLOR_ERR, COLOR_IDLE, COLOR_OK,
                             ROUTE_FAVORITE)
 from core.downloader import fetch_covers
 
@@ -55,7 +55,6 @@ PREVIEW_BLUR = 6
 class FavoritePage:
     def __init__(self, app):
         self.app = app
-        self.client = None
         self.ui_page = 1
         self.total = 0
         self.items = []
@@ -137,8 +136,8 @@ class FavoritePage:
             route=ROUTE_FAVORITE,
             appbar=ft.AppBar(
                 title=ft.Text(self.t("favorite_title")),
-                leading=ft.IconButton(ft.Icons.ARROW_BACK,
-                                      on_click=lambda e: app.navigate(ROUTE_ACCOUNT)),
+                leading=app.nav_leading(),
+                leading_width=APPBAR_LEADING_WIDTH,
             ),
             controls=[ft.Stack([self.content_box, self.overlay], expand=True)],
             padding=12,
@@ -317,9 +316,7 @@ class FavoritePage:
     def _worker(self, epoch):
         error = None
         try:
-            if self.client is None:
-                self.client = favorite.new_client(self.app.conf)
-            page = favorite.fetch_page(self.client, self.ui_page, self.folder_id)
+            page = favorite.fetch_page(self.app.conf, self.ui_page, self.folder_id)
             self.folders = favorite.folders_of(page)
             items = explore.to_items(page)
             self.total = int(page.total or 0)

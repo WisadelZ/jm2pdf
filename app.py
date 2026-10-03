@@ -13,7 +13,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-"""Jm2PDF v2.4.2 - 禁漫本子探索、在线浏览与下载工具（Flet UI）
+"""Jm2PDF v2.4.3 - 禁漫本子探索、在线浏览与下载工具（Flet UI）
 
 程序入口：仅负责创建窗口并交给 :class:`ui.app_ui.AppUI` 编排。
 各功能模块分布如下：

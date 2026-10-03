@@ -2,7 +2,7 @@
 
 本文件说明 Jm2PDF 的安全边界、数据处理方式以及漏洞报告流程。
 
-- 当前版本：v2.4.2（版本号取自 `core/constants.py` 的 `APP_VERSION`）
+- 当前版本：v2.4.3（版本号取自 `core/constants.py` 的 `APP_VERSION`）
 - 项目地址：https://github.com/WisadelZ/jm2pdf
 - 许可证：GPL-3.0-or-later
 
@@ -12,8 +12,8 @@
 
 | 版本 | 是否支持 |
 | --- | --- |
-| v2.4.2（最新） | ✅ |
-| v2.4.1 及更早 | ❌ |
+| v2.4.3（最新） | ✅ |
+| v2.4.2 及更早 | ❌ |
 
 ## 报告安全漏洞
 

@@ -18,6 +18,10 @@
 登录信息（账号 / 密码 / 昵称 / 头像地址）统一加密后写入程序同级目录下的
 单个文件（account.dat），磁盘上与 conf.yml 里都不出现任何明文；密钥由内置
 常量结合本机标识派生，文件拷到其它机器上无法解密。
+
+文件解密后的内容是一个「账号记录列表」，以支持多账号；列表中被标记
+``current=True`` 的那条即当前登录账号。运行时的账号 / 密码只留在内存里
+（:data:`_credentials`），供下载层登录使用。
 """
 
 import getpass
@@ -87,35 +91,128 @@ def _decrypt(raw):
     return json.loads(cipher.decrypt_and_verify(raw[offset + _TAG_SIZE:], tag).decode("utf-8"))
 
 
-def load_account():
-    """读取并解密账号信息；文件不存在、损坏或来自其它机器时返回 None。"""
+def _read_payload():
+    """读取并解密账号列表；文件不存在、损坏或来自其它机器时返回 []。"""
     try:
         with open(account_path(), "rb") as f:
             raw = f.read()
     except OSError:
-        return None
+        return []
     if not raw.startswith(_MAGIC):
-        return None
+        return []
     try:
         data = _decrypt(raw)
     except Exception:
-        return None
-    return data if isinstance(data, dict) else None
+        return []
+    # 旧版本只存单个账号（dict）：迁移成列表，并把它标记为当前账号
+    if isinstance(data, dict):
+        data = [dict(data, current=True)]
+    if not isinstance(data, list):
+        return []
+    return [record for record in data if isinstance(record, dict)]
 
 
-def save_account(data):
-    """加密写入账号信息，并同步运行时凭据。"""
-    with open(account_path(), "wb") as f:
-        f.write(_encrypt(data))
-    set_credentials(data.get("username"), data.get("password"))
+def _write_payload(records):
+    """加密写入账号列表；列表为空时直接删掉文件，不在磁盘上留空壳。
+
+    先写临时文件再原子替换：直接以 ``wb`` 覆盖会先截断文件，若此刻另一个
+    线程正在读取（例如界面重建时读账号列表），就会读到空文件而误判为「没有
+    已保存账号」。
+    """
+    if not records:
+        _remove_file()
+        return
+    path = account_path()
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(_encrypt(records))
+    os.replace(tmp, path)
 
 
-def delete_account():
-    """退出登录：删掉整个账号文件并清空运行时凭据。"""
+def _remove_file():
     try:
         os.remove(account_path())
     except FileNotFoundError:
         pass
+
+
+def _same_username(record, username):
+    return (record.get("username") or "").strip() == username
+
+
+def load_accounts():
+    """全部已保存的账号记录（按加入顺序），供登录页列表展示。"""
+    return _read_payload()
+
+
+def load_account():
+    """当前登录账号的记录；没有（或文件损坏）时返回 None。"""
+    for record in _read_payload():
+        if record.get("current"):
+            return record
+    return None
+
+
+def get_account(username):
+    """按用户名取一条已保存的账号记录；不存在时返回 None。"""
+    username = (username or "").strip()
+    for record in _read_payload():
+        if _same_username(record, username):
+            return record
+    return None
+
+
+def save_account(data):
+    """把一个账号写入列表并标记为当前账号，同时同步运行时凭据。
+
+    同名的旧记录就地替换（保持原有顺序），不存在则追加到末尾。
+    """
+    username = (data.get("username") or "").strip()
+    record = dict(data)
+    record["username"] = username
+    records = _read_payload()
+    for item in records:
+        item["current"] = False
+    record["current"] = True
+    for index, item in enumerate(records):
+        if _same_username(item, username):
+            records[index] = record
+            break
+    else:
+        records.append(record)
+    _write_payload(records)
+    set_credentials(username, record.get("password"))
+
+
+def remove_account(username):
+    """清除指定账号：从列表中删掉它的全部凭证；账号不存在时返回 False。
+
+    删掉的若正是当前账号，则同时清空运行时凭据。
+    """
+    username = (username or "").strip()
+    records = _read_payload()
+    target = next((record for record in records if _same_username(record, username)), None)
+    if target is None:
+        return False
+    remaining = [record for record in records if not _same_username(record, username)]
+    _write_payload(remaining)
+    if target.get("current"):
+        set_credentials("", "")
+    return True
+
+
+def clear_all_accounts():
+    """清除全部登录：删掉整个账号文件并清空运行时凭据。"""
+    _remove_file()
+    set_credentials("", "")
+
+
+def remove_current_account():
+    """退出当前账号：只删掉当前账号的凭证，其它已保存账号原样保留。"""
+    records = _read_payload()
+    remaining = [record for record in records if not record.get("current")]
+    if len(remaining) != len(records):
+        _write_payload(remaining)
     set_credentials("", "")
 
 

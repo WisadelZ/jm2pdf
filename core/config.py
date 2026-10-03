@@ -35,7 +35,7 @@ CONF_HEADER = """# Jm2PDF 配置文件
 
 # 程序内兜底默认配置：磁盘配置缺失字段时以此补齐
 DEFAULT_CONF_TEXT = """
-version: 2.4.2
+version: 2.4.3
 app:
   download_dir: ./download
   to_pdf: true
@@ -44,6 +44,7 @@ app:
   task_concurrency: 2
   theme_mode: dark
   language: zh_cn
+  auto_login: false
 mail:
   enable: false
   server: smtp.qq.com

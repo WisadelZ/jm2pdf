@@ -15,18 +15,26 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """签到层：执行每日签到，并把签到日历整理成界面要用的统计。
 
-签到只在账号页主动点击时执行，所以直接用带登录态的客户端；服务端返回的错误
-原样抛出，由界面按「签到失败」展示。
+签到只在账号页主动点击时执行，所以直接用 :func:`core.downloader.run_with_login`
+提供的登录客户端（会话内复用同一个已登录客户端，并在登录时锁定可用的接口域名）；
+服务端返回的错误原样抛出，由界面按「签到失败」展示。
 """
 
 import re
+from datetime import date
 
-from core.account import get_credentials
-from core.downloader import build_option
+from core.downloader import run_with_login
+
+# 签到结果码（与 jmcomic 的 JmDailyCheckinResp 一致）
+CODE_SUCCESS = 0              # 签到成功
+CODE_ALREADY_CHECKED_IN = 1   # 今天已经签到过
 
 # 签到成功时服务端会返回形如 "Jcoin:40 EXP:40" 的奖励说明
 _COIN_RE = re.compile(r"coin\s*[:：]\s*(\d+)", re.I)
 _EXP_RE = re.compile(r"exp\s*[:：]\s*(\d+)", re.I)
+
+# 服务端「今天已签过」的提示片段（jmcomic 只认繁体写法，简体会被它当成签到失败）
+_ALREADY_SIGNED_HINTS = ("已簽到", "已签到", "簽到過", "签到过", "已完成")
 
 
 def check_in(conf):
@@ -39,26 +47,60 @@ def check_in(conf):
     - ``streak``：连续签到天数（以最后一次签到那天为终点）
     - ``event``：当前签到活动名
     """
-    username, password = get_credentials()
-    client = build_option(conf, with_login=False).new_jm_client()
-    client.login(username, password)
-    resp = client.daily_checkin()
-    daily = client.get_daily().res_data or {}
+    return run_with_login(conf, _check_in)
+
+
+def _check_in(client):
+    daily = client.get_daily().res_data
+    if not isinstance(daily, dict):
+        daily = {}
     month_days, streak = _stats(daily.get("record"))
-    return {
-        "code": resp.code,
-        "coin": _match(_COIN_RE, resp.msg),
-        "exp": _match(_EXP_RE, resp.msg),
-        "msg": resp.msg,
+    result = {
+        "code": CODE_SUCCESS,
+        "coin": None,
+        "exp": None,
+        "msg": "",
         "month_days": month_days,
         "streak": streak,
         "event": str(daily.get("event_name") or "").strip(),
     }
+    if _signed_today(daily.get("record")):
+        # 日历上今天已经打过卡，就不再调签到接口：服务端会回「今天已经签到过了」，
+        # 而 jmcomic 认不出这个简体写法，会把它当成签到失败抛出来
+        result["code"] = CODE_ALREADY_CHECKED_IN
+        return result
+    try:
+        resp = client.daily_checkin(daily_id=daily.get("daily_id"))
+    except Exception as exc:
+        if not _is_already_signed_msg(str(exc)):
+            raise
+        result["code"] = CODE_ALREADY_CHECKED_IN
+        return result
+    result["code"] = resp.code
+    result["msg"] = resp.msg
+    result["coin"] = _match(_COIN_RE, resp.msg)
+    result["exp"] = _match(_EXP_RE, resp.msg)
+    return result
 
 
 def _match(pattern, text):
     found = pattern.search(text or "")
     return int(found.group(1)) if found else None
+
+
+def _is_already_signed_msg(text):
+    return any(hint in text for hint in _ALREADY_SIGNED_HINTS)
+
+
+def _signed_today(record):
+    """签到日历里今天是否已经打过卡（日历按周分组，日期是当月第几天）。"""
+    today = str(date.today().day)
+    for week in record or []:
+        for day in week or []:
+            day = day or {}
+            if str(day.get("date") or "").strip() == today and day.get("signed"):
+                return True
+    return False
 
 
 def _stats(record):

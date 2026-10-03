@@ -17,9 +17,9 @@
 
 import flet as ft
 
-from core.constants import (APP_AUTHOR, APP_NAME, APP_VERSION, ISSUES_URL,
-                            LICENSE_NAME, LICENSE_URL, PROJECT_URL, ROUTE_HELP,
-                            ROUTE_MAIN)
+from core.constants import (APP_AUTHOR, APP_NAME, APP_VERSION, APPBAR_LEADING_WIDTH,
+                            ISSUES_URL, LICENSE_NAME, LICENSE_URL, PROJECT_URL,
+                            ROUTE_HELP)
 
 
 class HelpPage:
@@ -60,8 +60,8 @@ class HelpPage:
             route=ROUTE_HELP,
             appbar=ft.AppBar(
                 title=ft.Text(self.t("help_title")),
-                leading=ft.IconButton(ft.Icons.ARROW_BACK,
-                                      on_click=lambda e: app.navigate(ROUTE_MAIN)),
+                leading=app.nav_leading(),
+                leading_width=APPBAR_LEADING_WIDTH,
             ),
             controls=[content],
             padding=12,

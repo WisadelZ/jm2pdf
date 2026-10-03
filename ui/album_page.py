@@ -25,7 +25,7 @@
 import flet as ft
 
 from core import explore, favorite
-from core.constants import (COLOR_ERR, ROUTE_ALBUM, ROUTE_MAIN,
+from core.constants import (APPBAR_LEADING_WIDTH, COLOR_ERR, ROUTE_ALBUM,
                             WINDOW_HEIGHT, WINDOW_WIDTH)
 from core.downloader import PREVIEW_LIMIT, album_url, fetch_cover, fetch_preview_images
 from core.online_reader import OnlineAlbum
@@ -171,8 +171,8 @@ class AlbumPage:
             route=ROUTE_ALBUM,
             appbar=ft.AppBar(
                 title=ft.Text(self.t("album_title")),
-                leading=ft.IconButton(ft.Icons.ARROW_BACK,
-                                      on_click=lambda e: app.navigate(ROUTE_MAIN)),
+                leading=app.nav_leading(),
+                leading_width=APPBAR_LEADING_WIDTH,
             ),
             controls=[ft.Stack([self.content_box, self.overlay,
                                 self.reader.build()], expand=True)],

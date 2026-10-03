@@ -23,7 +23,7 @@ import os
 
 import flet as ft
 
-from core.constants import ROUTE_DOWNLOAD, ROUTE_MAIN, ROUTE_TASKS
+from core.constants import APPBAR_LEADING_WIDTH, ROUTE_DOWNLOAD, ROUTE_TASKS
 from utils.helpers import clamp
 
 # 搜索结果框右侧封面缩略图尺寸（3:4，与网站封面图比例一致）
@@ -226,8 +226,8 @@ class MainPage:
             route=ROUTE_DOWNLOAD,
             appbar=ft.AppBar(
                 title=ft.Text(self.t("btn_download")),
-                leading=ft.IconButton(ft.Icons.ARROW_BACK,
-                                      on_click=lambda e: app.navigate(ROUTE_MAIN)),
+                leading=app.nav_leading(),
+                leading_width=APPBAR_LEADING_WIDTH,
                 # 任务中心入口放顶栏右上角：不占操作行宽度，也不会挤压状态文本；
                 # 末尾补一个与页面内边距相当的空位，避免图标贴到窗口右边缘
                 actions=[ft.IconButton(ft.Icons.LIST_ALT, tooltip=self.t("btn_tasks"),
@@ -321,9 +321,10 @@ class MainPage:
             "thread_image": self._field_int(self.thread_image_field, 30),
             "thread_photo": self._field_int(self.thread_photo_field, 16),
             "task_concurrency": clamp(self._field_int(self.task_concurrency_field, 2), 1, 4),
-            # 外观与语言由设置页维护，此处原样保留
+            # 外观 / 语言 / 自动登录由设置页维护，此处原样保留
             "theme_mode": app_conf.get("theme_mode", "dark"),
             "language": app_conf.get("language", "zh_cn"),
+            "auto_login": bool(app_conf.get("auto_login", False)),
         }
         conf["mail"] = {
             "enable": bool(self.mail_enable_switch.value),
